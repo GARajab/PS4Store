@@ -1,0 +1,18 @@
+[build]
+  publish = "build"  # or "dist", "public", "_site", etc.
+  command = "npm run build"  # or "yarn build", "gatsby build", etc.
+
+# For SPA (Single Page Application) routing
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Environment variables
+[build.environment]
+  NODE_VERSION = "18"  # or "16", "20", etc.
+  NPM_VERSION = "9"  # or specific npm version
+
+# Build plugins
+[[plugins]]
+  package = "@netlify/plugin-lighthouse"
