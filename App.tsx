@@ -6,8 +6,8 @@ import GameCard from './components/GameCard';
 import Navbar from './components/Navbar';
 import AuthModal from './components/AuthModal';
 import AdminPanel from './components/AdminPanel';
-import { SkeletonCard, LogoSpinner } from './components/LoadingSpinner';
-import { Search, Gamepad2 } from 'lucide-react';
+import { SkeletonCard } from './components/LoadingSpinner';
+import { Search, Gamepad2, TrendingUp, Sparkles, Filter } from 'lucide-react';
 
 const App: React.FC = () => {
   const [games, setGames] = useState<Game[]>([]);
@@ -76,14 +76,12 @@ const App: React.FC = () => {
       return;
     }
 
-    // Increment counter in Supabase (Assumes a 'download_count' column exists)
     const { error } = await supabase
       .from('games')
       .update({ download_count: (game.download_count || 0) + 1 })
       .eq('id', game.id);
 
     if (!error) {
-      // Local update for immediate feedback
       setGames(prev => prev.map(g => g.id === game.id ? { ...g, download_count: (g.download_count || 0) + 1 } : g));
     }
 
@@ -96,20 +94,6 @@ const App: React.FC = () => {
       return false;
     }
 
-    // Attempt to check if link is broken
-    let isBroken = false;
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
-      const response = await fetch(game.downloadUrl, { mode: 'no-cors', signal: controller.signal });
-      clearTimeout(timeoutId);
-      // 'no-cors' might still succeed even if 404, so we ask the user in a real scenario
-      // but for this UI, we treat any network error or slow timeout as "potentially broken"
-    } catch (e) {
-      isBroken = true;
-    }
-
-    // We report it anyway because user flagged it
     const { error } = await supabase
       .from('reports')
       .insert([{
@@ -133,8 +117,12 @@ const App: React.FC = () => {
     });
   }, [games, searchQuery, filterPlatform]);
 
+  const featuredGame = useMemo(() => {
+    return games.find(g => g.rating >= 4.9) || games[0];
+  }, [games]);
+
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col font-inter">
+    <div className="min-h-screen bg-slate-50 flex flex-col font-inter selection:bg-blue-600 selection:text-white">
       <Navbar 
         user={user} 
         reportCount={reportCount}
@@ -143,55 +131,111 @@ const App: React.FC = () => {
         onAdminClick={() => setShowAdminPanel(true)}
       />
 
-      <main className="flex-grow max-w-7xl mx-auto px-4 py-8 w-full">
-        {/* Hero */}
-        <section className="mb-12 relative overflow-hidden rounded-[3rem] bg-gradient-to-br from-blue-700 to-blue-500 p-12 text-white shadow-2xl shadow-blue-200">
-           <div className="relative z-10 md:max-w-2xl">
-            <div className="inline-flex items-center gap-2 bg-white/20 backdrop-blur-md px-4 py-1 rounded-full text-xs font-bold tracking-widest uppercase mb-6">
-              <Gamepad2 className="w-3 h-3" />
-              Direct Cloud Access
+      <main className="flex-grow max-w-7xl mx-auto px-6 py-12 w-full">
+        {/* Featured Hero */}
+        {!searchQuery && filterPlatform === 'All' && featuredGame && (
+          <section className="mb-16 relative overflow-hidden rounded-[4rem] min-h-[500px] group">
+            <img 
+              src={featuredGame.imageUrl} 
+              alt="Featured" 
+              className="absolute inset-0 w-full h-full object-cover transition-transform duration-[3s] group-hover:scale-110"
+            />
+            <div className="absolute inset-0 bg-gradient-to-r from-slate-900 via-slate-900/40 to-transparent" />
+            
+            <div className="relative z-10 p-12 md:p-20 flex flex-col justify-center h-full max-w-2xl text-white">
+              <div className="inline-flex items-center gap-2 bg-blue-600/90 backdrop-blur px-5 py-2 rounded-2xl text-[10px] font-black tracking-[0.2em] uppercase mb-8 shadow-2xl">
+                <Sparkles className="w-4 h-4" />
+                Featured Experience
+              </div>
+              <h1 className="text-6xl md:text-8xl font-black mb-8 leading-[0.9] font-outfit tracking-tighter">
+                {featuredGame.title.split(' ').map((word, i) => (
+                  <span key={i} className={i % 2 === 1 ? "text-blue-400" : ""}>{word} </span>
+                ))}
+              </h1>
+              <p className="text-xl md:text-2xl text-blue-50/80 mb-10 font-medium leading-relaxed max-w-lg">
+                The most anticipated title of the season, now available for instant digital entry.
+              </p>
+              <div className="flex flex-wrap gap-4">
+                <button 
+                  onClick={() => handleDownload(featuredGame)}
+                  className="bg-white text-slate-900 px-10 py-5 rounded-3xl font-black text-lg shadow-2xl hover:bg-blue-400 hover:text-white transition-all active:scale-95"
+                >
+                  Download Free
+                </button>
+                <div className="flex items-center gap-4 px-6 bg-white/10 backdrop-blur rounded-3xl border border-white/20">
+                  <TrendingUp className="w-6 h-6 text-blue-400" />
+                  <span className="font-black text-lg">TOP RANKED</span>
+                </div>
+              </div>
             </div>
-            <h1 className="text-5xl md:text-7xl font-black mb-6 leading-tight font-outfit">
-              Premium Games <br/><span className="text-blue-200">Zero Cost</span>
-            </h1>
-            <p className="text-lg md:text-xl text-blue-50 mb-8 opacity-90">
-              {games.reduce((acc, g) => acc + (g.download_count || 0), 0).toLocaleString()} global downloads and counting.
-            </p>
-          </div>
+          </section>
+        )}
+
+        {/* Global Stats bar */}
+        <div className="flex items-center justify-between mb-16 p-8 bg-white rounded-[3rem] shadow-xl shadow-slate-200/50 border border-slate-100">
+           <div className="flex items-center gap-4">
+              <div className="w-16 h-16 bg-blue-50 rounded-[1.75rem] flex items-center justify-center text-blue-600">
+                <TrendingUp className="w-8 h-8" />
+              </div>
+              <div>
+                <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Global Activity</p>
+                <p className="text-2xl font-black text-slate-800 font-outfit">
+                  {games.reduce((acc, g) => acc + (g.download_count || 0), 0).toLocaleString()}+ <span className="text-blue-600">Downloads</span>
+                </p>
+              </div>
+           </div>
+           <div className="hidden md:flex gap-12">
+             <div className="text-center">
+               <p className="text-[10px] font-black text-slate-400 uppercase">Library</p>
+               <p className="text-xl font-black text-slate-800">{games.length} Games</p>
+             </div>
+             <div className="text-center">
+               <p className="text-[10px] font-black text-slate-400 uppercase">Cost</p>
+               <p className="text-xl font-black text-emerald-500">$0.00</p>
+             </div>
+           </div>
+        </div>
+
+        {/* Filters & Search */}
+        <section className="mb-12 space-y-8">
+           <div className="flex flex-col md:flex-row gap-6 items-center justify-between">
+              <div className="relative w-full md:max-w-xl group">
+                <div className="absolute inset-y-0 left-6 flex items-center pointer-events-none">
+                  <Search className="w-6 h-6 text-slate-300 group-focus-within:text-blue-500 transition-colors" />
+                </div>
+                <input 
+                  type="text" 
+                  placeholder="What are we playing today?"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-16 pr-8 py-6 rounded-[2.5rem] bg-white border border-slate-100 shadow-[0_10px_40px_rgba(0,0,0,0.03)] outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-200 transition-all text-lg font-bold text-slate-700 placeholder:text-slate-300"
+                />
+              </div>
+
+              <div className="flex gap-2 p-2 bg-white rounded-[2rem] shadow-lg shadow-slate-100 border border-slate-50 w-full md:w-auto overflow-x-auto overflow-y-hidden custom-scrollbar">
+                {['All', 'PS5', 'PS4'].map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => setFilterPlatform(p as any)}
+                    className={`px-10 py-4 rounded-2xl font-black text-sm uppercase tracking-widest transition-all ${
+                      filterPlatform === p 
+                      ? 'bg-blue-600 text-white shadow-xl shadow-blue-100' 
+                      : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >{p}</button>
+                ))}
+              </div>
+           </div>
         </section>
 
-        {/* Filters */}
-        <section className="mb-10 flex flex-col md:flex-row gap-4 items-center justify-between">
-           <div className="relative w-full md:max-w-md group">
-              <input 
-                type="text" 
-                placeholder="Find a masterpiece..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-6 pr-6 py-4 rounded-3xl bg-white border border-slate-200 shadow-sm outline-none focus:ring-2 focus:ring-blue-400 transition-all text-slate-700 font-medium"
-              />
-            </div>
-            <div className="flex gap-3 overflow-x-auto pb-2 w-full md:w-auto">
-              {['All', 'PS5', 'PS4'].map((p) => (
-                <button
-                  key={p}
-                  onClick={() => setFilterPlatform(p as any)}
-                  className={`px-8 py-4 rounded-2xl font-bold transition-all ${
-                    filterPlatform === p ? 'bg-blue-600 text-white shadow-lg' : 'bg-white text-slate-600'
-                  }`}
-                >{p}</button>
-              ))}
-            </div>
-        </section>
-
-        {/* Grid */}
-        <section className="min-h-[400px]">
+        {/* Grid Container */}
+        <section className="min-h-[600px]">
           {isLoading ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-10">
               {[...Array(8)].map((_, i) => <SkeletonCard key={i} />)}
             </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+          ) : filteredGames.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-10">
               {filteredGames.map((game) => (
                 <GameCard 
                   key={game.id}
@@ -199,13 +243,45 @@ const App: React.FC = () => {
                   onDownload={handleDownload}
                   onReport={handleReport}
                   isAdmin={user?.isAdmin}
-                  onEdit={() => { setShowAdminPanel(true); }}
+                  onEdit={(g) => { setShowAdminPanel(true); }}
                 />
               ))}
+            </div>
+          ) : (
+            <div className="py-32 text-center bg-white rounded-[4rem] border border-dashed border-slate-200">
+              <div className="w-24 h-24 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6">
+                <Gamepad2 className="w-12 h-12 text-slate-300" />
+              </div>
+              <h3 className="text-3xl font-black text-slate-800 font-outfit mb-2">No Titles Found</h3>
+              <p className="text-slate-400 font-medium">Try searching for something else or adjusting your filters.</p>
+              <button 
+                onClick={() => {setSearchQuery(''); setFilterPlatform('All');}}
+                className="mt-8 text-blue-600 font-black hover:underline"
+              >
+                Clear all filters
+              </button>
             </div>
           )}
         </section>
       </main>
+
+      <footer className="bg-white border-t border-slate-100 py-16 px-6">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-8">
+           <div className="flex items-center gap-4">
+              <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white font-black font-outfit">P</div>
+              <div>
+                <p className="text-xl font-black text-slate-800 font-outfit">PlayFree</p>
+                <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest">Digital Gaming Repository</p>
+              </div>
+           </div>
+           <div className="flex gap-8 text-sm font-black text-slate-400 uppercase tracking-widest">
+             <a href="#" className="hover:text-blue-600 transition-colors">Privacy</a>
+             <a href="#" className="hover:text-blue-600 transition-colors">Safety</a>
+             <a href="#" className="hover:text-blue-600 transition-colors">Support</a>
+           </div>
+           <p className="text-xs text-slate-400 font-medium">© {new Date().getFullYear()} PlayFree Media Group. All rights reserved.</p>
+        </div>
+      </footer>
 
       {showAuthModal && <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} onLogin={u => setUser(u)} />}
       {showAdminPanel && <AdminPanel games={games} onUpdateGame={fetchGames} onAddGame={fetchGames} onClose={() => setShowAdminPanel(false)} />}
