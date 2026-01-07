@@ -1,0 +1,7 @@
+{
+  "name": "PlayFree - PS4/PS5 Game Hub",
+  "description": "A high-performance, user-friendly game discovery and download platform for PlayStation 4 and 5 enthusiasts. Featuring a clean light design, administrative controls, and seamless animations.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
