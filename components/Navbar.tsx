@@ -1,16 +1,17 @@
 
 import React, { useState } from 'react';
 import { User } from '../types';
-import { LogOut, User as UserIcon, Settings, ChevronDown, Gamepad2, ShieldCheck } from 'lucide-react';
+import { LogOut, User as UserIcon, Settings, ChevronDown, Gamepad2, ShieldCheck, Bell } from 'lucide-react';
 
 interface NavbarProps {
   user: User | null;
+  reportCount: number;
   onAuthClick: () => void;
   onLogout: () => void;
   onAdminClick: () => void;
 }
 
-const Navbar: React.FC<NavbarProps> = ({ user, onAuthClick, onLogout, onAdminClick }) => {
+const Navbar: React.FC<NavbarProps> = ({ user, reportCount, onAuthClick, onLogout, onAdminClick }) => {
   const [showDropdown, setShowDropdown] = useState(false);
 
   return (
@@ -27,16 +28,22 @@ const Navbar: React.FC<NavbarProps> = ({ user, onAuthClick, onLogout, onAdminCli
           </div>
         </div>
 
-        {/* Menu Items (Desktop) */}
-        <div className="hidden md:flex items-center gap-8">
-          <a href="#" className="text-slate-600 hover:text-blue-600 font-bold transition-colors">Store</a>
-          <a href="#" className="text-slate-600 hover:text-blue-600 font-bold transition-colors">Categories</a>
-          <a href="#" className="text-slate-600 hover:text-blue-600 font-bold transition-colors">Latest</a>
-          <a href="#" className="text-slate-600 hover:text-blue-600 font-bold transition-colors">Support</a>
-        </div>
-
         {/* User Actions */}
         <div className="flex items-center gap-4">
+          {user?.isAdmin && (
+            <button 
+              onClick={onAdminClick}
+              className="relative p-3 bg-slate-50 hover:bg-slate-100 rounded-2xl transition-all group"
+            >
+              <Bell className={`w-5 h-5 text-slate-600 group-hover:text-blue-600 ${reportCount > 0 ? 'animate-[shake_1s_infinite]' : ''}`} />
+              {reportCount > 0 && (
+                <span className="absolute top-2 right-2 w-4 h-4 bg-red-500 border-2 border-white rounded-full flex items-center justify-center text-[8px] font-black text-white">
+                  {reportCount}
+                </span>
+              )}
+            </button>
+          )}
+
           {user ? (
             <div className="relative">
               <button 
@@ -74,10 +81,6 @@ const Navbar: React.FC<NavbarProps> = ({ user, onAuthClick, onLogout, onAdminCli
                       <Gamepad2 className="w-4 h-4" />
                       My Library
                     </button>
-                    <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-slate-600 hover:bg-slate-50 font-bold text-sm transition-all">
-                      <Settings className="w-4 h-4" />
-                      Settings
-                    </button>
                     <button 
                       onClick={onLogout}
                       className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-red-500 hover:bg-red-50 font-bold text-sm transition-all"
@@ -99,6 +102,18 @@ const Navbar: React.FC<NavbarProps> = ({ user, onAuthClick, onLogout, onAdminCli
           )}
         </div>
       </div>
+      <style>{`
+        @keyframes shake {
+          0% { transform: rotate(0); }
+          15% { transform: rotate(5deg); }
+          30% { transform: rotate(-5deg); }
+          45% { transform: rotate(4deg); }
+          60% { transform: rotate(-4deg); }
+          75% { transform: rotate(2deg); }
+          85% { transform: rotate(-2deg); }
+          100% { transform: rotate(0); }
+        }
+      `}</style>
     </nav>
   );
 };

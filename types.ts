@@ -10,6 +10,16 @@ export interface Game {
   platform: Platform;
   category: string;
   rating: number;
+  download_count: number;
+}
+
+export interface GameReport {
+  id: string;
+  game_id: string;
+  game_title?: string;
+  user_id: string;
+  status: 'pending' | 'resolved';
+  created_at: string;
 }
 
 export interface User {

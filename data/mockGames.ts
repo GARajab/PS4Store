@@ -10,7 +10,9 @@ export const INITIAL_GAMES: Game[] = [
     downloadUrl: 'https://example.com/dl/sm2',
     platform: 'PS5',
     category: 'Action',
-    rating: 4.9
+    rating: 4.9,
+    // Fix: Added missing required download_count property
+    download_count: 15420
   },
   {
     id: '2',
@@ -20,7 +22,9 @@ export const INITIAL_GAMES: Game[] = [
     downloadUrl: 'https://example.com/dl/gowr',
     platform: 'Both',
     category: 'Adventure',
-    rating: 5.0
+    rating: 5.0,
+    // Fix: Added missing required download_count property
+    download_count: 8930
   },
   {
     id: '3',
@@ -30,7 +34,9 @@ export const INITIAL_GAMES: Game[] = [
     downloadUrl: 'https://example.com/dl/got',
     platform: 'Both',
     category: 'Open World',
-    rating: 4.8
+    rating: 4.8,
+    // Fix: Added missing required download_count property
+    download_count: 12100
   },
   {
     id: '4',
@@ -40,7 +46,9 @@ export const INITIAL_GAMES: Game[] = [
     downloadUrl: 'https://example.com/dl/hfw',
     platform: 'Both',
     category: 'RPG',
-    rating: 4.7
+    rating: 4.7,
+    // Fix: Added missing required download_count property
+    download_count: 6750
   },
   {
     id: '5',
@@ -50,7 +58,9 @@ export const INITIAL_GAMES: Game[] = [
     downloadUrl: 'https://example.com/dl/rcra',
     platform: 'PS5',
     category: 'Platformer',
-    rating: 4.6
+    rating: 4.6,
+    // Fix: Added missing required download_count property
+    download_count: 4200
   },
   {
     id: '6',
@@ -60,6 +70,8 @@ export const INITIAL_GAMES: Game[] = [
     downloadUrl: 'https://example.com/dl/tlou2',
     platform: 'PS4',
     category: 'Action-Survival',
-    rating: 4.9
+    rating: 4.9,
+    // Fix: Added missing required download_count property
+    download_count: 23150
   }
 ];
