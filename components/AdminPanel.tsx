@@ -8,17 +8,24 @@ import { supabase } from '../lib/supabase';
 
 interface AdminPanelProps {
   games: Game[];
+  initialGame?: Game | null;
   onUpdateGame: () => void;
   onAddGame: () => void;
   onClose: () => void;
 }
 
-const AdminPanel: React.FC<AdminPanelProps> = ({ games, onUpdateGame, onAddGame, onClose }) => {
+const AdminPanel: React.FC<AdminPanelProps> = ({ games, initialGame, onUpdateGame, onAddGame, onClose }) => {
   const [activeTab, setActiveTab] = useState<'games' | 'reports'>('games');
   const [editingGame, setEditingGame] = useState<Partial<Game> | null>(null);
   const [reports, setReports] = useState<GameReport[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    if (initialGame) {
+      setEditingGame(initialGame);
+    }
+  }, [initialGame]);
 
   useEffect(() => {
     if (activeTab === 'reports') {
@@ -45,7 +52,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ games, onUpdateGame, onAddGame,
 
     setIsSaving(true);
     try {
-      const gameData = {
+      const gameData: any = {
         title: editingGame.title,
         description: editingGame.description,
         imageUrl: editingGame.imageUrl,
@@ -55,30 +62,41 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ games, onUpdateGame, onAddGame,
         updates: editingGame.updates || []
       };
 
+      let result;
       if (editingGame?.id) {
-        const { error } = await supabase
+        result = await supabase
           .from('games')
           .update(gameData)
           .eq('id', editingGame.id);
-
-        if (error) throw error;
-        onUpdateGame();
       } else {
-        const { error } = await supabase
+        result = await supabase
           .from('games')
           .insert([{
             ...gameData,
             rating: 4.5,
             download_count: 0
           }]);
+      }
 
-        if (error) throw error;
+      if (result.error) {
+        console.error('Supabase Save Error Details:', {
+          message: result.error.message,
+          details: result.error.details,
+          hint: result.error.hint,
+          code: result.error.code
+        });
+        throw new Error(result.error.message);
+      }
+
+      if (editingGame?.id) {
+        onUpdateGame();
+      } else {
         onAddGame();
       }
       setEditingGame(null);
-    } catch (err) {
-      console.error('Save error:', err);
-      alert('Failed to save. Check your console for details.');
+    } catch (err: any) {
+      console.error('Final Save Error:', err);
+      alert(`Failed to save: ${err.message || 'Unknown error'}. If you just added the "updates" feature, ensure your Supabase "games" table has a JSONB column named "updates".`);
     } finally {
       setIsSaving(false);
     }
@@ -88,6 +106,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ games, onUpdateGame, onAddGame,
     if (!confirm('Are you sure you want to delete this game?')) return;
     const { error } = await supabase.from('games').delete().eq('id', id);
     if (!error) onUpdateGame();
+    else alert(`Delete failed: ${error.message}`);
   };
 
   const resolveReport = async (reportId: string) => {

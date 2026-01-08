@@ -16,6 +16,7 @@ const App: React.FC = () => {
   const [filterPlatform, setFilterPlatform] = useState<Platform | 'All'>('All');
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showAdminPanel, setShowAdminPanel] = useState(false);
+  const [editingGame, setEditingGame] = useState<Game | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [reportCount, setReportCount] = useState(0);
 
@@ -128,7 +129,7 @@ const App: React.FC = () => {
         reportCount={reportCount}
         onAuthClick={() => setShowAuthModal(true)} 
         onLogout={() => supabase.auth.signOut()}
-        onAdminClick={() => setShowAdminPanel(true)}
+        onAdminClick={() => { setEditingGame(null); setShowAdminPanel(true); }}
       />
 
       <main className="flex-grow max-w-7xl mx-auto px-6 py-12 w-full">
@@ -228,7 +229,7 @@ const App: React.FC = () => {
            </div>
         </section>
 
-        {/* Grid Container - Updated column distribution for wider cards */}
+        {/* Grid Container */}
         <section className="min-h-[600px]">
           {isLoading ? (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-12">
@@ -243,7 +244,7 @@ const App: React.FC = () => {
                   onDownload={handleDownload}
                   onReport={handleReport}
                   isAdmin={user?.isAdmin}
-                  onEdit={(g) => { setShowAdminPanel(true); }}
+                  onEdit={(g) => { setEditingGame(g); setShowAdminPanel(true); }}
                 />
               ))}
             </div>
@@ -284,7 +285,7 @@ const App: React.FC = () => {
       </footer>
 
       {showAuthModal && <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} onLogin={u => setUser(u)} />}
-      {showAdminPanel && <AdminPanel games={games} onUpdateGame={fetchGames} onAddGame={fetchGames} onClose={() => setShowAdminPanel(false)} />}
+      {showAdminPanel && <AdminPanel games={games} initialGame={editingGame} onUpdateGame={fetchGames} onAddGame={fetchGames} onClose={() => setShowAdminPanel(false)} />}
     </div>
   );
 };
