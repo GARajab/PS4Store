@@ -228,14 +228,14 @@ const App: React.FC = () => {
            </div>
         </section>
 
-        {/* Grid Container */}
+        {/* Grid Container - Updated column distribution for wider cards */}
         <section className="min-h-[600px]">
           {isLoading ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-10">
-              {[...Array(8)].map((_, i) => <SkeletonCard key={i} />)}
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-12">
+              {[...Array(6)].map((_, i) => <SkeletonCard key={i} />)}
             </div>
           ) : filteredGames.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-10">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-12">
               {filteredGames.map((game) => (
                 <GameCard 
                   key={game.id}

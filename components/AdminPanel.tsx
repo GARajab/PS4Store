@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
-import { Game, Platform, GameReport } from '../types';
-import { X, Plus, Save, Sparkles, Trash2, AlertCircle, CheckCircle, Image as ImageIcon, Monitor } from 'lucide-react';
+import { Game, Platform, GameReport, GameUpdate } from '../types';
+import { X, Plus, Save, Sparkles, Trash2, AlertCircle, CheckCircle, Image as ImageIcon, Monitor, ListPlus, ChevronRight } from 'lucide-react';
 import { generateGameDescription } from '../services/geminiService';
 import { PulseSpinner } from './LoadingSpinner';
 import { supabase } from '../lib/supabase';
@@ -45,17 +45,20 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ games, onUpdateGame, onAddGame,
 
     setIsSaving(true);
     try {
+      const gameData = {
+        title: editingGame.title,
+        description: editingGame.description,
+        imageUrl: editingGame.imageUrl,
+        downloadUrl: editingGame.downloadUrl,
+        platform: editingGame.platform || 'PS4',
+        category: editingGame.category || 'General',
+        updates: editingGame.updates || []
+      };
+
       if (editingGame?.id) {
         const { error } = await supabase
           .from('games')
-          .update({
-            title: editingGame.title,
-            description: editingGame.description,
-            imageUrl: editingGame.imageUrl,
-            downloadUrl: editingGame.downloadUrl,
-            platform: editingGame.platform,
-            category: editingGame.category || 'General',
-          })
+          .update(gameData)
           .eq('id', editingGame.id);
 
         if (error) throw error;
@@ -64,12 +67,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ games, onUpdateGame, onAddGame,
         const { error } = await supabase
           .from('games')
           .insert([{
-            title: editingGame?.title,
-            description: editingGame?.description,
-            imageUrl: editingGame?.imageUrl || 'https://images.unsplash.com/photo-1606144042614-b2417e99c4e3?q=80&w=2070&auto=format&fit=crop',
-            downloadUrl: editingGame?.downloadUrl,
-            platform: editingGame?.platform || 'Both',
-            category: editingGame?.category || 'General',
+            ...gameData,
             rating: 4.5,
             download_count: 0
           }]);
@@ -103,6 +101,33 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ games, onUpdateGame, onAddGame,
     const desc = await generateGameDescription(editingGame.title);
     setEditingGame(prev => ({ ...prev!, description: desc }));
     setIsGenerating(false);
+  };
+
+  const addUpdate = () => {
+    const newUpdate: GameUpdate = {
+      id: crypto.randomUUID(),
+      version: '',
+      firmware: '',
+      downloadUrl: ''
+    };
+    setEditingGame(prev => ({
+      ...prev!,
+      updates: [...(prev?.updates || []), newUpdate]
+    }));
+  };
+
+  const removeUpdate = (id: string) => {
+    setEditingGame(prev => ({
+      ...prev!,
+      updates: prev?.updates?.filter(u => u.id !== id) || []
+    }));
+  };
+
+  const updateUpdateField = (id: string, field: keyof GameUpdate, value: string) => {
+    setEditingGame(prev => ({
+      ...prev!,
+      updates: prev?.updates?.map(u => u.id === id ? { ...u, [field]: value } : u) || []
+    }));
   };
 
   return (
@@ -178,7 +203,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ games, onUpdateGame, onAddGame,
             <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-300">
               <div className="flex items-center gap-4 mb-2">
                 <button onClick={() => setEditingGame(null)} className="text-blue-600 font-black text-sm flex items-center gap-1 hover:underline">
-                  <X className="w-4 h-4" /> Back to List
+                  <ChevronRight className="w-4 h-4 rotate-180" /> Back to List
                 </button>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -193,7 +218,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ games, onUpdateGame, onAddGame,
                   />
                 </div>
                 <div className="space-y-3">
-                  <label className="text-xs font-black uppercase tracking-widest text-slate-400 px-1">Download URL</label>
+                  <label className="text-xs font-black uppercase tracking-widest text-slate-400 px-1">Download URL (Base Game)</label>
                   <input 
                     type="text" 
                     value={editingGame.downloadUrl || ''} 
@@ -219,12 +244,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ games, onUpdateGame, onAddGame,
                     <Monitor className="w-3 h-3" /> Target Platform
                   </label>
                   <select 
-                    value={editingGame.platform || 'Both'} 
+                    value={editingGame.platform || 'PS4'} 
                     onChange={e => setEditingGame({ ...editingGame, platform: e.target.value as Platform })}
                     className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-700 appearance-none cursor-pointer"
                   >
-                    <option value="PS5">PlayStation 5</option>
                     <option value="PS4">PlayStation 4</option>
+                    <option value="PS5">PlayStation 5</option>
                     <option value="Both">Cross-Gen (Both)</option>
                   </select>
                 </div>
@@ -242,12 +267,80 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ games, onUpdateGame, onAddGame,
                   <textarea 
                     value={editingGame.description || ''} 
                     onChange={e => setEditingGame({ ...editingGame, description: e.target.value })} 
-                    className="w-full px-6 py-5 bg-slate-50 border border-slate-200 rounded-3xl focus:ring-2 focus:ring-blue-500 outline-none h-40 font-medium text-slate-600 leading-relaxed resize-none" 
+                    className="w-full px-6 py-5 bg-slate-50 border border-slate-200 rounded-3xl focus:ring-2 focus:ring-blue-500 outline-none h-32 font-medium text-slate-600 leading-relaxed resize-none" 
                     placeholder="Describe the gaming experience..."
                   />
                 </div>
+
+                {/* GAME UPDATES SECTION */}
+                <div className="md:col-span-2 mt-8">
+                  <div className="flex items-center justify-between mb-6 px-1">
+                    <div className="flex items-center gap-3">
+                      <ListPlus className="w-5 h-5 text-blue-600" />
+                      <h3 className="text-lg font-black text-slate-800 font-outfit">Game Updates (Sublinks)</h3>
+                    </div>
+                    <button 
+                      onClick={addUpdate}
+                      className="flex items-center gap-2 bg-blue-50 text-blue-600 px-4 py-2 rounded-xl font-black text-xs hover:bg-blue-600 hover:text-white transition-all active:scale-95"
+                    >
+                      <Plus className="w-4 h-4" /> Add New Version
+                    </button>
+                  </div>
+
+                  <div className="space-y-4">
+                    {(editingGame.updates || []).length === 0 ? (
+                      <div className="py-12 bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200 text-center">
+                        <p className="text-slate-400 font-bold text-sm">No updates currently linked to this game.</p>
+                      </div>
+                    ) : (
+                      editingGame.updates?.map((upd, idx) => (
+                        <div key={upd.id} className="bg-slate-50 p-6 rounded-[2rem] border border-slate-200 relative group/upd animate-in fade-in slide-in-from-left-2">
+                          <button 
+                            onClick={() => removeUpdate(upd.id)}
+                            className="absolute top-4 right-4 p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                          
+                          <div className="grid grid-cols-1 md:grid-cols-12 gap-6 pt-2">
+                            <div className="md:col-span-3 space-y-2">
+                              <label className="text-[10px] font-black uppercase text-slate-400">Version</label>
+                              <input 
+                                type="text"
+                                value={upd.version}
+                                onChange={e => updateUpdateField(upd.id, 'version', e.target.value)}
+                                className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold text-slate-700"
+                                placeholder="e.g. v1.02"
+                              />
+                            </div>
+                            <div className="md:col-span-9 space-y-2">
+                              <label className="text-[10px] font-black uppercase text-slate-400">Download Link</label>
+                              <input 
+                                type="text"
+                                value={upd.downloadUrl}
+                                onChange={e => updateUpdateField(upd.id, 'downloadUrl', e.target.value)}
+                                className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold text-slate-700"
+                                placeholder="https://..."
+                              />
+                            </div>
+                            <div className="md:col-span-12 space-y-2">
+                              <label className="text-[10px] font-black uppercase text-slate-400">Firmware Compatibility & Notes</label>
+                              <textarea 
+                                value={upd.firmware}
+                                onChange={e => updateUpdateField(upd.id, 'firmware', e.target.value)}
+                                className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium text-slate-600 h-24 resize-none"
+                                placeholder="e.g. Works on PS4 FW 5.05, 6.72, 9.00. Includes DLC pack 1."
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
               </div>
-              <div className="flex gap-4">
+              
+              <div className="flex gap-4 pt-4">
                 <button 
                   onClick={handleSave} 
                   disabled={isSaving} 
@@ -268,7 +361,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ games, onUpdateGame, onAddGame,
           ) : (
             <div className="space-y-4">
                <button 
-                onClick={() => setEditingGame({ title: '', platform: 'Both', description: '', downloadUrl: '', imageUrl: '' })} 
+                onClick={() => setEditingGame({ title: '', platform: 'PS4', description: '', downloadUrl: '', imageUrl: '', updates: [] })} 
                 className="w-full py-8 border-2 border-dashed border-slate-200 rounded-[2.5rem] flex flex-col items-center justify-center gap-3 text-slate-400 hover:border-blue-300 hover:text-blue-500 hover:bg-blue-50/30 transition-all group"
                >
                  <div className="p-4 bg-slate-50 rounded-2xl group-hover:bg-blue-100 transition-colors">
@@ -289,7 +382,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ games, onUpdateGame, onAddGame,
                        </div>
                        <div>
                         <h4 className="font-black text-slate-800 text-lg font-outfit leading-none mb-1">{game.title}</h4>
-                        <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">{game.category || 'Standard'}</p>
+                        <div className="flex items-center gap-3">
+                          <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">{game.category || 'Standard'}</p>
+                          {(game.updates || []).length > 0 && (
+                            <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded-md font-black">
+                              {game.updates?.length} UPDATES
+                            </span>
+                          )}
+                        </div>
                        </div>
                      </div>
                      <div className="flex gap-2">

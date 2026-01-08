@@ -1,6 +1,13 @@
 
 export type Platform = 'PS4' | 'PS5' | 'Both';
 
+export interface GameUpdate {
+  id: string;
+  version: string;
+  firmware: string;
+  downloadUrl: string;
+}
+
 export interface Game {
   id: string;
   title: string;
@@ -11,6 +18,7 @@ export interface Game {
   category: string;
   rating: number;
   download_count: number;
+  updates?: GameUpdate[];
 }
 
 export interface GameReport {
