@@ -78,7 +78,7 @@ const GameCard: React.FC<GameCardProps> = ({ game, onDownload, onReport, isAdmin
         {/* Trending/Download Count Badge */}
         <div className="absolute bottom-5 left-5 bg-white/10 backdrop-blur-xl border border-white/20 px-4 py-2 rounded-2xl text-[10px] font-black text-white flex items-center gap-2 group-hover:bg-white group-hover:text-blue-600 transition-all">
           <TrendingUp className="w-3.5 h-3.5" />
-          {game.download_count?.toLocaleString() || 0} PLAYS
+          {game.download_count?.toLocaleString() || 0} DOWNLOADS
         </div>
       </div>
 
@@ -116,7 +116,7 @@ const GameCard: React.FC<GameCardProps> = ({ game, onDownload, onReport, isAdmin
             ) : downloadState === 'preparing' ? (
               <span className="invisible">Download</span>
             ) : (
-              <><Download className="w-5 h-5 group-hover/btn:-translate-y-1 transition-transform" /> Access Game</>
+              <><Download className="w-5 h-5 group-hover/btn:-translate-y-1 transition-transform" /> Download Game</>
             )}
           </button>
           
