@@ -71,61 +71,61 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }) => {
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[100] flex items-center justify-center p-4">
-      <div className="bg-white rounded-[2rem] w-full max-w-md overflow-hidden shadow-2xl relative animate-in fade-in slide-in-from-bottom-8 duration-300">
-        <button onClick={onClose} className="absolute top-6 right-6 p-2 hover:bg-slate-100 rounded-full transition-colors z-10">
+      <div className="bg-white border border-slate-100 rounded-[2.5rem] w-full max-w-md overflow-hidden shadow-2xl relative animate-in fade-in slide-in-from-bottom-8 duration-300">
+        <button onClick={onClose} className="absolute top-6 right-6 p-2 hover:bg-slate-50 rounded-full transition-colors z-10">
           <X className="w-5 h-5 text-slate-400" />
         </button>
 
         <div className="p-10">
           <div className="mb-8 text-center">
-            <div className="w-16 h-16 bg-blue-600 rounded-3xl mx-auto flex items-center justify-center mb-4 rotate-12 shadow-lg shadow-blue-200">
+            <div className="w-16 h-16 bg-blue-600 rounded-3xl mx-auto flex items-center justify-center mb-4 rotate-12 shadow-xl shadow-blue-100">
               <span className="text-white text-2xl font-black font-outfit">P</span>
             </div>
             <h2 className="text-3xl font-black text-slate-800 font-outfit">
-              {isLogin ? 'Sign In' : 'Create Account'}
+              {isLogin ? 'Welcome Back' : 'Join PlayFree'}
             </h2>
-            <p className="text-slate-500 mt-2">Connect to your gaming cloud</p>
+            <p className="text-slate-500 mt-2 font-medium">Connect to your gaming cloud</p>
           </div>
 
           {error && (
-            <div className="mb-6 p-4 bg-red-50 text-red-600 text-sm rounded-2xl border border-red-100 font-medium">
+            <div className="mb-6 p-4 bg-red-50 text-red-500 text-sm rounded-2xl border border-red-100 font-bold">
               {error}
             </div>
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {!isLogin && (
-              <div className="space-y-1">
-                <label className="text-sm font-bold text-slate-600 ml-1">Username</label>
+              <div className="space-y-2">
+                <label className="text-xs font-black uppercase tracking-widest text-slate-400 ml-1">Username</label>
                 <input 
                   type="text"
                   required
                   value={username}
                   onChange={e => setUsername(e.target.value)}
-                  className="w-full px-5 py-3 rounded-2xl bg-slate-50 border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                  className="w-full px-5 py-4 rounded-2xl bg-slate-50 border border-slate-100 focus:ring-2 focus:ring-blue-600 outline-none transition-all text-slate-800 font-bold placeholder:text-slate-300"
                   placeholder="PlayMaster99"
                 />
               </div>
             )}
-            <div className="space-y-1">
-              <label className="text-sm font-bold text-slate-600 ml-1">Email</label>
+            <div className="space-y-2">
+              <label className="text-xs font-black uppercase tracking-widest text-slate-400 ml-1">Email</label>
               <input 
                 type="email"
                 required
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                className="w-full px-5 py-3 rounded-2xl bg-slate-50 border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                className="w-full px-5 py-4 rounded-2xl bg-slate-50 border border-slate-100 focus:ring-2 focus:ring-blue-600 outline-none transition-all text-slate-800 font-bold placeholder:text-slate-300"
                 placeholder="name@example.com"
               />
             </div>
-            <div className="space-y-1">
-              <label className="text-sm font-bold text-slate-600 ml-1">Password</label>
+            <div className="space-y-2">
+              <label className="text-xs font-black uppercase tracking-widest text-slate-400 ml-1">Password</label>
               <input 
                 type="password"
                 required
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                className="w-full px-5 py-3 rounded-2xl bg-slate-50 border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                className="w-full px-5 py-4 rounded-2xl bg-slate-50 border border-slate-100 focus:ring-2 focus:ring-blue-600 outline-none transition-all text-slate-800 font-bold placeholder:text-slate-300"
                 placeholder="••••••••"
               />
             </div>
@@ -133,19 +133,19 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }) => {
             <button 
               type="submit"
               disabled={loading}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-2xl mt-6 shadow-xl shadow-blue-100 flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-70"
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-5 rounded-2xl mt-6 shadow-xl shadow-blue-100 flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-70"
             >
-              {loading ? <PulseSpinner /> : (isLogin ? <><LogIn className="w-5 h-5" /> Login</> : <><UserPlus className="w-5 h-5" /> Sign Up</>)}
+              {loading ? <PulseSpinner /> : (isLogin ? <><LogIn className="w-5 h-5" /> Sign In</> : <><UserPlus className="w-5 h-5" /> Register</>)}
             </button>
           </form>
 
-          <div className="mt-8 text-center text-sm text-slate-500">
+          <div className="mt-8 text-center text-sm text-slate-500 font-medium">
             {isLogin ? "Don't have an account?" : "Already have an account?"}
             <button 
               onClick={() => setIsLogin(!isLogin)}
-              className="ml-2 text-blue-600 font-bold hover:underline"
+              className="ml-2 text-blue-600 font-black hover:underline"
             >
-              {isLogin ? 'Register Now' : 'Login instead'}
+              {isLogin ? 'Sign up now' : 'Login instead'}
             </button>
           </div>
         </div>

@@ -7,7 +7,7 @@ import Navbar from './components/Navbar';
 import AuthModal from './components/AuthModal';
 import AdminPanel from './components/AdminPanel';
 import { SkeletonCard } from './components/LoadingSpinner';
-import { Search, Gamepad2, TrendingUp, Sparkles, Filter } from 'lucide-react';
+import { Search, Gamepad2, TrendingUp, Sparkles, Filter, Bookmark, ChevronRight } from 'lucide-react';
 
 const App: React.FC = () => {
   const [games, setGames] = useState<Game[]>([]);
@@ -19,6 +19,10 @@ const App: React.FC = () => {
   const [editingGame, setEditingGame] = useState<Game | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [reportCount, setReportCount] = useState(0);
+  
+  // My Library State
+  const [viewMode, setViewMode] = useState<'store' | 'library'>('store');
+  const [libraryIds, setLibraryIds] = useState<string[]>([]);
 
   const fetchGames = async () => {
     setIsLoading(true);
@@ -43,6 +47,11 @@ const App: React.FC = () => {
   useEffect(() => {
     fetchGames();
     fetchReportCount();
+    
+    const savedLibrary = localStorage.getItem('playfree_library');
+    if (savedLibrary) {
+      setLibraryIds(JSON.parse(savedLibrary));
+    }
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
@@ -75,6 +84,12 @@ const App: React.FC = () => {
     if (!user) {
       setShowAuthModal(true);
       return;
+    }
+
+    if (!libraryIds.includes(game.id)) {
+      const newLibrary = [...libraryIds, game.id];
+      setLibraryIds(newLibrary);
+      localStorage.setItem('playfree_library', JSON.stringify(newLibrary));
     }
 
     const { error } = await supabase
@@ -114,12 +129,14 @@ const App: React.FC = () => {
     return games.filter(game => {
       const matchesSearch = game.title.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesPlatform = filterPlatform === 'All' || game.platform === filterPlatform || game.platform === 'Both';
-      return matchesSearch && matchesPlatform;
+      const matchesLibrary = viewMode === 'store' || libraryIds.includes(game.id);
+      return matchesSearch && matchesPlatform && matchesLibrary;
     });
-  }, [games, searchQuery, filterPlatform]);
+  }, [games, searchQuery, filterPlatform, viewMode, libraryIds]);
 
   const featuredGame = useMemo(() => {
-    return games.find(g => g.rating >= 4.9) || games[0];
+    const sorted = [...games].sort((a, b) => b.rating - a.rating);
+    return sorted[0];
   }, [games]);
 
   return (
@@ -130,74 +147,113 @@ const App: React.FC = () => {
         onAuthClick={() => setShowAuthModal(true)} 
         onLogout={() => supabase.auth.signOut()}
         onAdminClick={() => { setEditingGame(null); setShowAdminPanel(true); }}
+        onLibraryClick={() => setViewMode('library')}
+        onHomeClick={() => setViewMode('store')}
       />
 
       <main className="flex-grow max-w-7xl mx-auto px-6 py-12 w-full">
-        {/* Featured Hero */}
-        {!searchQuery && filterPlatform === 'All' && featuredGame && (
-          <section className="mb-16 relative overflow-hidden rounded-[4rem] min-h-[500px] group">
-            <img 
-              src={featuredGame.imageUrl} 
-              alt="Featured" 
-              className="absolute inset-0 w-full h-full object-cover transition-transform duration-[3s] group-hover:scale-110"
-            />
-            <div className="absolute inset-0 bg-gradient-to-r from-slate-900 via-slate-900/40 to-transparent" />
-            
-            <div className="relative z-10 p-12 md:p-20 flex flex-col justify-center h-full max-w-2xl text-white">
-              <div className="inline-flex items-center gap-2 bg-blue-600/90 backdrop-blur px-5 py-2 rounded-2xl text-[10px] font-black tracking-[0.2em] uppercase mb-8 shadow-2xl">
-                <Sparkles className="w-4 h-4" />
-                Featured Experience
-              </div>
-              <h1 className="text-6xl md:text-8xl font-black mb-8 leading-[0.9] font-outfit tracking-tighter">
-                {featuredGame.title.split(' ').map((word, i) => (
-                  <span key={i} className={i % 2 === 1 ? "text-blue-400" : ""}>{word} </span>
-                ))}
-              </h1>
-              <p className="text-xl md:text-2xl text-blue-50/80 mb-10 font-medium leading-relaxed max-w-lg">
-                The most anticipated title of the season, now available for instant digital entry.
-              </p>
-              <div className="flex flex-wrap gap-4">
-                <button 
-                  onClick={() => handleDownload(featuredGame)}
-                  className="bg-white text-slate-900 px-10 py-5 rounded-3xl font-black text-lg shadow-2xl hover:bg-blue-400 hover:text-white transition-all active:scale-95"
-                >
-                  Download Free
+        {/* Header Toggle */}
+        {viewMode === 'library' && (
+          <div className="mb-12 animate-in slide-in-from-left-4">
+             <div className="flex items-center gap-4 mb-2">
+                <button onClick={() => setViewMode('store')} className="text-blue-600 font-black text-sm hover:underline flex items-center gap-1">
+                  <ChevronRight className="w-4 h-4 rotate-180" /> Back to Store
                 </button>
-                <div className="flex items-center gap-4 px-6 bg-white/10 backdrop-blur rounded-3xl border border-white/20">
-                  <TrendingUp className="w-6 h-6 text-blue-400" />
-                  <span className="font-black text-lg">TOP RANKED</span>
+             </div>
+             <h2 className="text-5xl font-black text-slate-800 font-outfit">My Library</h2>
+             <p className="text-slate-500 font-medium">Your personal collection of downloaded titles.</p>
+          </div>
+        )}
+
+        {/* FEATURED HERO - LITE THEME + IMAGE FIT */}
+        {viewMode === 'store' && !searchQuery && filterPlatform === 'All' && featuredGame && (
+          <section className="mb-20 relative overflow-hidden rounded-[4rem] min-h-[500px] md:min-h-[600px] bg-slate-900 group shadow-[0_40px_100px_-20px_rgba(0,0,0,0.2)] border border-slate-200">
+            {/* Ambient Background Layer */}
+            <div className="absolute inset-0 z-0">
+              <img 
+                src={featuredGame.imageUrl} 
+                alt="Ambient Background" 
+                className="w-full h-full object-cover opacity-20 blur-3xl scale-125"
+              />
+            </div>
+
+            {/* Content Layer */}
+            <div className="relative z-10 grid grid-cols-1 lg:grid-cols-2 h-full min-h-[500px] md:min-h-[600px]">
+              {/* Left Side: Info */}
+              <div className="p-12 md:p-20 flex flex-col justify-center text-white bg-gradient-to-r from-slate-900 via-slate-900/90 to-transparent">
+                <div className="inline-flex items-center gap-2 bg-blue-600 px-5 py-2 rounded-2xl text-[10px] font-black tracking-[0.2em] uppercase mb-8 shadow-2xl w-fit">
+                  <Sparkles className="w-4 h-4" />
+                  Ultimate Pick
+                </div>
+                <h1 className="text-6xl md:text-8xl font-black mb-8 leading-[0.9] font-outfit tracking-tighter">
+                  {featuredGame.title.split(' ').map((word, i) => (
+                    <span key={i} className={i % 2 === 1 ? "text-blue-400" : "text-white"}>{word} </span>
+                  ))}
+                </h1>
+                <p className="text-xl md:text-2xl text-slate-300 mb-10 font-medium leading-relaxed max-w-lg">
+                  Dive into this season's most acclaimed masterpiece. High-fidelity gaming, now fully unlocked for your collection.
+                </p>
+                <div className="flex flex-wrap gap-4 mt-auto">
+                  <button 
+                    onClick={() => handleDownload(featuredGame)}
+                    className="bg-white text-slate-900 px-12 py-5 rounded-[2rem] font-black text-lg shadow-2xl hover:bg-blue-500 hover:text-white transition-all active:scale-95 flex items-center gap-3"
+                  >
+                    Get it Free <ChevronRight className="w-5 h-5" />
+                  </button>
+                  <div className="flex items-center gap-4 px-6 bg-white/10 backdrop-blur-xl rounded-[2rem] border border-white/20">
+                    <TrendingUp className="w-6 h-6 text-blue-400" />
+                    <span className="font-black text-lg text-white">TOP TRENDING</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Side: Image Containment */}
+              <div className="hidden lg:flex relative items-center justify-center p-12 overflow-hidden">
+                <div className="relative w-full h-full max-h-[480px] flex items-center justify-center transition-transform duration-700 group-hover:scale-[1.03]">
+                  <div className="relative rounded-[3rem] overflow-hidden shadow-[0_40px_80px_-15px_rgba(0,0,0,0.6)] border border-white/10 bg-slate-800 p-0 flex items-center justify-center">
+                    <img 
+                      src={featuredGame.imageUrl} 
+                      alt={featuredGame.title} 
+                      className="max-w-full max-h-full object-contain block"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent pointer-events-none" />
+                  </div>
+                  {/* Decorative ambient flare */}
+                  <div className="absolute -z-10 w-[140%] h-[140%] bg-blue-500/10 rounded-full blur-[120px] animate-pulse" />
                 </div>
               </div>
             </div>
           </section>
         )}
 
-        {/* Global Stats bar */}
-        <div className="flex items-center justify-between mb-16 p-8 bg-white rounded-[3rem] shadow-xl shadow-slate-200/50 border border-slate-100">
-           <div className="flex items-center gap-4">
-              <div className="w-16 h-16 bg-blue-50 rounded-[1.75rem] flex items-center justify-center text-blue-600">
-                <TrendingUp className="w-8 h-8" />
-              </div>
-              <div>
-                <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Global Activity</p>
-                <p className="text-2xl font-black text-slate-800 font-outfit">
-                  {games.reduce((acc, g) => acc + (g.download_count || 0), 0).toLocaleString()}+ <span className="text-blue-600">Downloads</span>
-                </p>
-              </div>
-           </div>
-           <div className="hidden md:flex gap-12">
-             <div className="text-center">
-               <p className="text-[10px] font-black text-slate-400 uppercase">Library</p>
-               <p className="text-xl font-black text-slate-800">{games.length} Games</p>
+        {/* Global Stats bar - Lite Version */}
+        {viewMode === 'store' && (
+          <div className="flex items-center justify-between mb-16 p-8 bg-white rounded-[3rem] shadow-xl shadow-slate-200/50 border border-slate-100">
+             <div className="flex items-center gap-4">
+                <div className="w-16 h-16 bg-blue-50 rounded-[1.75rem] flex items-center justify-center text-blue-600">
+                  <TrendingUp className="w-8 h-8" />
+                </div>
+                <div>
+                  <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Global Activity</p>
+                  <p className="text-2xl font-black text-slate-800 font-outfit">
+                    {games.reduce((acc, g) => acc + (g.download_count || 0), 0).toLocaleString()}+ <span className="text-blue-600">Downloads</span>
+                  </p>
+                </div>
              </div>
-             <div className="text-center">
-               <p className="text-[10px] font-black text-slate-400 uppercase">Cost</p>
-               <p className="text-xl font-black text-emerald-500">$0.00</p>
+             <div className="hidden md:flex gap-12">
+               <div className="text-center">
+                 <p className="text-[10px] font-black text-slate-400 uppercase">Library</p>
+                 <p className="text-xl font-black text-slate-800">{games.length} Games</p>
+               </div>
+               <div className="text-center">
+                 <p className="text-[10px] font-black text-slate-400 uppercase">Cost</p>
+                 <p className="text-xl font-black text-emerald-500">$0.00</p>
+               </div>
              </div>
-           </div>
-        </div>
+          </div>
+        )}
 
-        {/* Filters & Search */}
+        {/* Filters & Search - Lite Version */}
         <section className="mb-12 space-y-8">
            <div className="flex flex-col md:flex-row gap-6 items-center justify-between">
               <div className="relative w-full md:max-w-xl group">
@@ -206,7 +262,7 @@ const App: React.FC = () => {
                 </div>
                 <input 
                   type="text" 
-                  placeholder="What are we playing today?"
+                  placeholder={viewMode === 'library' ? "Search your library..." : "What are we playing today?"}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full pl-16 pr-8 py-6 rounded-[2.5rem] bg-white border border-slate-100 shadow-[0_10px_40px_rgba(0,0,0,0.03)] outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-200 transition-all text-lg font-bold text-slate-700 placeholder:text-slate-300"
@@ -245,28 +301,33 @@ const App: React.FC = () => {
                   onReport={handleReport}
                   isAdmin={user?.isAdmin}
                   onEdit={(g) => { setEditingGame(g); setShowAdminPanel(true); }}
+                  isSaved={libraryIds.includes(game.id)}
                 />
               ))}
             </div>
           ) : (
             <div className="py-32 text-center bg-white rounded-[4rem] border border-dashed border-slate-200">
-              <div className="w-24 h-24 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6">
-                <Gamepad2 className="w-12 h-12 text-slate-300" />
+              <div className="w-24 h-24 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6 text-slate-300">
+                {viewMode === 'library' ? <Bookmark className="w-12 h-12" /> : <Gamepad2 className="w-12 h-12" />}
               </div>
-              <h3 className="text-3xl font-black text-slate-800 font-outfit mb-2">No Titles Found</h3>
-              <p className="text-slate-400 font-medium">Try searching for something else or adjusting your filters.</p>
+              <h3 className="text-3xl font-black text-slate-800 font-outfit mb-2">
+                {viewMode === 'library' ? 'Your Library is Empty' : 'No Titles Found'}
+              </h3>
+              <p className="text-slate-400 font-medium">
+                {viewMode === 'library' ? 'Games you download will appear here for quick access.' : 'Try searching for something else or adjusting your filters.'}
+              </p>
               <button 
-                onClick={() => {setSearchQuery(''); setFilterPlatform('All');}}
+                onClick={() => {setSearchQuery(''); setFilterPlatform('All'); setViewMode('store');}}
                 className="mt-8 text-blue-600 font-black hover:underline"
               >
-                Clear all filters
+                {viewMode === 'library' ? 'Explore the Store' : 'Clear all filters'}
               </button>
             </div>
           )}
         </section>
       </main>
 
-      <footer className="bg-white border-t border-slate-100 py-16 px-6">
+      <footer className="bg-white border-t border-slate-100 py-16 px-6 mt-20">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-8">
            <div className="flex items-center gap-4">
               <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white font-black font-outfit">P</div>

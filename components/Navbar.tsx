@@ -9,16 +9,21 @@ interface NavbarProps {
   onAuthClick: () => void;
   onLogout: () => void;
   onAdminClick: () => void;
+  onLibraryClick: () => void;
+  onHomeClick: () => void;
 }
 
-const Navbar: React.FC<NavbarProps> = ({ user, reportCount, onAuthClick, onLogout, onAdminClick }) => {
+const Navbar: React.FC<NavbarProps> = ({ user, reportCount, onAuthClick, onLogout, onAdminClick, onLibraryClick, onHomeClick }) => {
   const [showDropdown, setShowDropdown] = useState(false);
 
   return (
     <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-slate-100 py-4 px-6">
       <div className="max-w-7xl mx-auto flex items-center justify-between">
         {/* Logo */}
-        <div className="flex items-center gap-3 group cursor-pointer">
+        <div 
+          onClick={onHomeClick}
+          className="flex items-center gap-3 group cursor-pointer"
+        >
           <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center shadow-xl shadow-blue-100 transition-transform group-hover:rotate-12">
             <span className="text-white text-2xl font-black font-outfit">P</span>
           </div>
@@ -77,7 +82,10 @@ const Navbar: React.FC<NavbarProps> = ({ user, reportCount, onAuthClick, onLogou
                         Admin Panel
                       </button>
                     )}
-                    <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-slate-600 hover:bg-slate-50 font-bold text-sm transition-all">
+                    <button 
+                      onClick={() => {onLibraryClick(); setShowDropdown(false);}}
+                      className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-slate-600 hover:bg-slate-50 font-bold text-sm transition-all"
+                    >
                       <Gamepad2 className="w-4 h-4" />
                       My Library
                     </button>

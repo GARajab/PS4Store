@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Game, Platform, GameReport, GameUpdate } from '../types';
-import { X, Plus, Save, Sparkles, Trash2, AlertCircle, CheckCircle, Image as ImageIcon, Monitor, ListPlus, ChevronRight } from 'lucide-react';
+import { X, Plus, Save, Sparkles, Trash2, AlertCircle, CheckCircle, Image as ImageIcon, Monitor, ListPlus, ChevronRight, Terminal, Copy } from 'lucide-react';
 import { generateGameDescription } from '../services/geminiService';
 import { PulseSpinner } from './LoadingSpinner';
 import { supabase } from '../lib/supabase';
@@ -20,6 +20,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ games, initialGame, onUpdateGam
   const [reports, setReports] = useState<GameReport[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [dbError, setDbError] = useState<string | null>(null);
 
   useEffect(() => {
     if (initialGame) {
@@ -51,6 +52,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ games, initialGame, onUpdateGam
     }
 
     setIsSaving(true);
+    setDbError(null);
     try {
       const gameData: any = {
         title: editingGame.title,
@@ -79,13 +81,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ games, initialGame, onUpdateGam
       }
 
       if (result.error) {
-        console.error('Supabase Save Error Details:', {
-          message: result.error.message,
-          details: result.error.details,
-          hint: result.error.hint,
-          code: result.error.code
-        });
-        throw new Error(result.error.message);
+        // Specifically check for missing column error
+        if (result.error.message.includes('column "updates" of relation "games" does not exist') || 
+            result.error.code === '42703' || 
+            result.error.message.includes('schema cache')) {
+          setDbError('updates_column_missing');
+          throw new Error("Database Schema Mismatch");
+        }
+        throw result.error;
       }
 
       if (editingGame?.id) {
@@ -96,10 +99,17 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ games, initialGame, onUpdateGam
       setEditingGame(null);
     } catch (err: any) {
       console.error('Final Save Error:', err);
-      alert(`Failed to save: ${err.message || 'Unknown error'}. If you just added the "updates" feature, ensure your Supabase "games" table has a JSONB column named "updates".`);
+      if (err.message !== "Database Schema Mismatch") {
+        alert(`Failed to save: ${err.message || 'Unknown error'}`);
+      }
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const copySql = () => {
+    navigator.clipboard.writeText("ALTER TABLE games ADD COLUMN updates JSONB DEFAULT '[]'::jsonb;");
+    alert("SQL copied to clipboard!");
   };
 
   const handleDelete = async (id: string) => {
@@ -145,7 +155,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ games, initialGame, onUpdateGam
   const updateUpdateField = (id: string, field: keyof GameUpdate, value: string) => {
     setEditingGame(prev => ({
       ...prev!,
-      updates: prev?.updates?.map(u => u.id === id ? { ...u, [field]: value } : u) || []
+      updates: prev?.updates?.map(u => {
+        if (u.id === id) {
+          return { ...u, [field]: value };
+        }
+        return u;
+      }) || []
     }));
   };
 
@@ -178,6 +193,32 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ games, initialGame, onUpdateGam
         </div>
 
         <div className="flex-grow overflow-y-auto p-8 custom-scrollbar">
+          {dbError === 'updates_column_missing' && (
+            <div className="mb-8 p-8 bg-amber-50 rounded-[2.5rem] border-2 border-amber-200 animate-in slide-in-from-top-4">
+              <div className="flex items-start gap-4 mb-4">
+                <div className="p-3 bg-amber-100 rounded-2xl">
+                  <Terminal className="w-6 h-6 text-amber-600" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black text-amber-900 font-outfit">Database Setup Required</h3>
+                  <p className="text-amber-700 text-sm font-medium">The "updates" feature requires a new column in your Supabase table. Please run the following command in your SQL Editor:</p>
+                </div>
+              </div>
+              <div className="bg-slate-900 p-4 rounded-2xl relative group">
+                <code className="text-blue-400 font-mono text-xs block break-all">
+                  ALTER TABLE games ADD COLUMN updates JSONB DEFAULT '[]'::jsonb;
+                </code>
+                <button 
+                  onClick={copySql}
+                  className="absolute top-2 right-2 p-2 bg-slate-800 text-slate-400 hover:text-white rounded-lg transition-colors"
+                >
+                  <Copy className="w-4 h-4" />
+                </button>
+              </div>
+              <p className="mt-4 text-xs text-amber-600 font-bold uppercase tracking-wider text-center">Refresh the page after running the command</p>
+            </div>
+          )}
+
           {activeTab === 'reports' ? (
             <div className="space-y-4">
                {reports.length === 0 ? (
@@ -323,7 +364,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ games, initialGame, onUpdateGam
                           
                           <div className="grid grid-cols-1 md:grid-cols-12 gap-6 pt-2">
                             <div className="md:col-span-3 space-y-2">
-                              <label className="text-[10px] font-black uppercase text-slate-400">Version</label>
+                              <label className="text-[10px] font-black uppercase text-slate-400">Update Version</label>
                               <input 
                                 type="text"
                                 value={upd.version}
@@ -333,7 +374,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ games, initialGame, onUpdateGam
                               />
                             </div>
                             <div className="md:col-span-9 space-y-2">
-                              <label className="text-[10px] font-black uppercase text-slate-400">Download Link</label>
+                              <label className="text-[10px] font-black uppercase text-slate-400">Update Download Link</label>
                               <input 
                                 type="text"
                                 value={upd.downloadUrl}
@@ -343,12 +384,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ games, initialGame, onUpdateGam
                               />
                             </div>
                             <div className="md:col-span-12 space-y-2">
-                              <label className="text-[10px] font-black uppercase text-slate-400">Firmware Compatibility & Notes</label>
+                              <label className="text-[10px] font-black uppercase text-slate-400">Compatible PS Firmware Versions (Long Text)</label>
                               <textarea 
                                 value={upd.firmware}
                                 onChange={e => updateUpdateField(upd.id, 'firmware', e.target.value)}
                                 className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium text-slate-600 h-24 resize-none"
-                                placeholder="e.g. Works on PS4 FW 5.05, 6.72, 9.00. Includes DLC pack 1."
+                                placeholder="e.g. Works on PS4 Firmware 5.05, 6.72, 7.02, 7.55, and 9.00. Tested and stable."
                               />
                             </div>
                           </div>
@@ -380,7 +421,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ games, initialGame, onUpdateGam
           ) : (
             <div className="space-y-4">
                <button 
-                onClick={() => setEditingGame({ title: '', platform: 'PS4', description: '', downloadUrl: '', imageUrl: '', updates: [] })} 
+                onClick={() => {
+                  setDbError(null);
+                  setEditingGame({ title: '', platform: 'PS4', description: '', downloadUrl: '', imageUrl: '', updates: [] });
+                }} 
                 className="w-full py-8 border-2 border-dashed border-slate-200 rounded-[2.5rem] flex flex-col items-center justify-center gap-3 text-slate-400 hover:border-blue-300 hover:text-blue-500 hover:bg-blue-50/30 transition-all group"
                >
                  <div className="p-4 bg-slate-50 rounded-2xl group-hover:bg-blue-100 transition-colors">
@@ -413,7 +457,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ games, initialGame, onUpdateGam
                      </div>
                      <div className="flex gap-2">
                        <button 
-                        onClick={() => setEditingGame(game)} 
+                        onClick={() => {
+                          setDbError(null);
+                          setEditingGame(game);
+                        }} 
                         className="p-3 bg-white text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white shadow-sm border border-slate-100 transition-all active:scale-90"
                        >
                          <Save className="w-5 h-5" />

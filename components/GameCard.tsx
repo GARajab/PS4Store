@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Game } from '../types';
-import { Download, Star, AlertTriangle, CheckCircle2, TrendingUp, Info, History, ChevronDown } from 'lucide-react';
+import { Download, Star, AlertTriangle, CheckCircle2, TrendingUp, Info, History, ChevronDown, Bookmark } from 'lucide-react';
 import { PulseSpinner } from './LoadingSpinner';
 
 interface GameCardProps {
@@ -10,9 +10,10 @@ interface GameCardProps {
   onReport: (game: Game) => Promise<boolean>;
   isAdmin?: boolean;
   onEdit?: (game: Game) => void;
+  isSaved?: boolean;
 }
 
-const GameCard: React.FC<GameCardProps> = ({ game, onDownload, onReport, isAdmin, onEdit }) => {
+const GameCard: React.FC<GameCardProps> = ({ game, onDownload, onReport, isAdmin, onEdit, isSaved }) => {
   const [isReporting, setIsReporting] = useState(false);
   const [reportStatus, setReportStatus] = useState<'idle' | 'success'>('idle');
   const [downloadState, setDownloadState] = useState<'idle' | 'preparing' | 'done'>('idle');
@@ -69,6 +70,11 @@ const GameCard: React.FC<GameCardProps> = ({ game, onDownload, onReport, isAdmin
           }`}>
             {game.platform}
           </div>
+          {isSaved && (
+            <div className="bg-blue-600 text-white px-5 py-2 rounded-full text-[10px] font-black uppercase tracking-[0.1em] shadow-xl shadow-blue-500/20 border border-blue-400/30 flex items-center gap-1">
+              <Bookmark className="w-3 h-3" /> IN LIBRARY
+            </div>
+          )}
           <div className="bg-emerald-500 text-white px-5 py-2 rounded-full text-[10px] font-black uppercase tracking-[0.1em] shadow-xl shadow-emerald-500/20 border border-emerald-400/30">
             FREE
           </div>
@@ -107,7 +113,7 @@ const GameCard: React.FC<GameCardProps> = ({ game, onDownload, onReport, isAdmin
             className="flex items-center gap-2 mb-8 text-blue-600 font-black text-xs uppercase tracking-widest bg-blue-50 w-fit px-4 py-2 rounded-xl hover:bg-blue-600 hover:text-white transition-all"
           >
             <History className="w-4 h-4" />
-            {game.updates?.length} Updates Available
+            {game.updates?.length} Updates
             <ChevronDown className={`w-4 h-4 transition-transform ${showUpdates ? 'rotate-180' : ''}`} />
           </button>
         )}
@@ -122,9 +128,8 @@ const GameCard: React.FC<GameCardProps> = ({ game, onDownload, onReport, isAdmin
                     <span className="text-[10px] font-black bg-blue-600 text-white px-2 py-0.5 rounded-md">
                       {upd.version}
                     </span>
-                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">FW COMPATIBLE</span>
                   </div>
-                  <p className="text-xs text-slate-500 font-medium line-clamp-2 pr-4">{upd.firmware}</p>
+                  <p className="text-[10px] text-slate-500 font-medium truncate">{upd.firmware}</p>
                 </div>
                 <button 
                   onClick={() => handleUpdateDownload(upd.downloadUrl)}
@@ -137,19 +142,19 @@ const GameCard: React.FC<GameCardProps> = ({ game, onDownload, onReport, isAdmin
           </div>
         )}
 
-        {/* Updated Button Row - Horizontal Distribution */}
+        {/* Button Row */}
         <div className="mt-auto flex items-center gap-3">
           <button 
             onClick={handleDownloadClick}
             disabled={downloadState !== 'idle'}
-            className={`flex-grow flex items-center justify-center gap-3 font-black py-4.5 px-6 rounded-2xl transition-all active:scale-95 shadow-lg relative overflow-hidden group/btn ${
+            className={`flex-grow flex items-center justify-center gap-3 font-black py-4.5 px-6 rounded-2xl transition-all active:scale-95 shadow-lg relative overflow-hidden group/btn h-14 ${
               downloadState === 'done' 
-              ? 'bg-emerald-500 text-white shadow-emerald-200 h-14' 
-              : 'bg-slate-900 hover:bg-blue-600 text-white shadow-slate-200 h-14'
+              ? 'bg-emerald-500 text-white shadow-emerald-200' 
+              : 'bg-slate-900 hover:bg-blue-600 text-white shadow-slate-200'
             }`}
           >
             {downloadState === 'preparing' && (
-              <div className="absolute inset-0 bg-blue-500 animate-pulse flex items-center justify-center">
+              <div className="absolute inset-0 bg-blue-500 flex items-center justify-center">
                 <PulseSpinner />
               </div>
             )}
@@ -167,12 +172,11 @@ const GameCard: React.FC<GameCardProps> = ({ game, onDownload, onReport, isAdmin
             <button 
               onClick={handleReport}
               disabled={reportStatus === 'success'}
-              className={`w-14 h-14 rounded-2xl transition-all flex items-center justify-center group/report border ${
+              className={`w-14 h-14 rounded-2xl transition-all flex items-center justify-center border ${
                 reportStatus === 'success' 
                   ? 'bg-emerald-50 text-emerald-600 border-emerald-100' 
                   : 'bg-slate-50 text-slate-400 border-slate-100 hover:bg-red-50 hover:text-red-500 hover:border-red-100'
               }`}
-              title="Report broken link"
             >
               {isReporting ? <PulseSpinner /> : reportStatus === 'success' ? <CheckCircle2 className="w-6 h-6" /> : <AlertTriangle className="w-6 h-6" />}
             </button>
@@ -181,7 +185,6 @@ const GameCard: React.FC<GameCardProps> = ({ game, onDownload, onReport, isAdmin
               <button 
                 onClick={(e) => { e.stopPropagation(); onEdit?.(game); }}
                 className="w-14 h-14 bg-slate-50 hover:bg-blue-50 text-slate-400 hover:text-blue-600 rounded-2xl transition-all shadow-sm border border-slate-100 hover:border-blue-100 flex items-center justify-center"
-                title="Admin Settings"
               >
                 <Info className="w-6 h-6" />
               </button>
