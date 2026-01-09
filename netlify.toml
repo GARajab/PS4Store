@@ -1,15 +1,15 @@
 [build]
+  publish = "dist"
   command = "npm run build"
-  publish = "."
 
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
 
-[[headers]]
-  for = "/*"
-  [headers.values]
-    Access-Control-Allow-Origin = "*"
-    Access-Control-Allow-Methods = "GET, POST, OPTIONS"
-    Access-Control-Allow-Headers = "Content-Type"
+[build.environment]
+  NODE_VERSION = "18"
+
+# Optional: Add build caching for faster deploys
+[build.processing]
+  skip_processing = true
