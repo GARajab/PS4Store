@@ -8,7 +8,7 @@ import AuthModal from './components/AuthModal';
 import AdminPanel from './components/AdminPanel';
 import TrailerModal from './components/TrailerModal';
 import { SkeletonCard } from './components/LoadingSpinner';
-import { Search, Gamepad2, LayoutGrid, Library, TrendingUp, Sparkles, RefreshCw, Database } from 'lucide-react';
+import { Search, Gamepad2, LayoutGrid, Library, TrendingUp, Sparkles, RefreshCw, Database, Activity } from 'lucide-react';
 import { ToastProvider, useToast } from './context/ToastContext';
 
 const AppContent: React.FC = () => {
@@ -28,7 +28,9 @@ const AppContent: React.FC = () => {
   const [libraryIds, setLibraryIds] = useState<string[]>([]);
   const [activeTrailer, setActiveTrailer] = useState<Game | null>(null);
 
-  const initAttempted = useRef(false);
+  // Request Synchronization Refs
+  const isInitializing = useRef(false);
+  const lastRequestTime = useRef(0);
 
   const getFullUser = async (sbUser: any): Promise<User> => {
     try {
@@ -54,81 +56,77 @@ const AppContent: React.FC = () => {
     }
   };
 
-  const fetchGames = useCallback(async (isRetry = false) => {
+  const fetchGames = useCallback(async () => {
+    // Throttling to prevent AbortError from rapid re-mounting
+    const now = Date.now();
+    if (now - lastRequestTime.current < 500) return;
+    lastRequestTime.current = now;
+
     try {
       const { data, error } = await supabase
         .from('games')
         .select('*')
         .order('download_count', { ascending: false });
 
-      if (error) {
-        if (error.code === 'PGRST116' || error.message.includes('not found')) {
-          setGames([]);
-        } else {
-          throw error;
-        }
-      } else {
-        setGames(data || []);
-        setFetchError(null);
-      }
+      if (error) throw error;
+      setGames(data || []);
+      setFetchError(null);
     } catch (err: any) {
-      if (err.name === 'AbortError' && !isRetry) {
-        // Automatic single silent retry for AbortErrors
-        await new Promise(r => setTimeout(r, 500));
-        return fetchGames(true);
-      }
-      console.error("Archival Fetch Error:", err);
-      setFetchError(err.name === 'AbortError' 
-        ? "Network sequence interrupted. Please check connection." 
-        : (err.message || "Failed to sync with archival registry."));
+      if (err.name === 'AbortError') return; // Silently ignore cancelled requests
+      console.error("Database sync failed:", err);
+      setFetchError(err.message || "Archive synchronization interrupted.");
+    } finally {
+      setIsLoading(false);
     }
   }, []);
 
   const initializeApp = useCallback(async () => {
+    if (isInitializing.current) return;
+    isInitializing.current = true;
+    
     setIsLoading(true);
     setFetchError(null);
     
     try {
-      // 1. Initial wait to ensure browser environment is stable
-      await new Promise(r => setTimeout(r, 300));
-      
-      // 2. Sequential load to prevent AbortError collisions
+      // 1. Connection Heartbeat Check
+      const { error: hbError } = await supabase.from('games').select('id').limit(1);
+      if (hbError && hbError.code !== 'PGRST116') throw hbError;
+
+      // 2. Fetch Data
       await fetchGames();
       
       // 3. Staggered supplementary loads
-      await new Promise(r => setTimeout(r, 100));
       const { count } = await supabase.from('reports').select('*', { count: 'exact', head: true }).eq('status', 'pending');
       setReportCount(count || 0);
 
-      // 4. Session check
+      // 4. Session Recovery
       const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user && session.user.email_confirmed_at) {
+      if (session?.user) {
         const fullUser = await getFullUser(session.user);
         setUser(fullUser);
-        
         const { data: libData } = await supabase.from('user_library').select('game_id').eq('user_id', fullUser.id);
         if (libData) setLibraryIds(libData.map(item => item.game_id));
       }
     } catch (err: any) {
-      console.error("Initialization failed:", err);
-      if (!games.length) setFetchError("System initialization failed. Project may be paused or unreachable.");
+      console.error("System init failure:", err);
+      setFetchError("Database unreachable. Ensure Supabase credentials are valid.");
     } finally {
       setIsLoading(false);
+      isInitializing.current = false;
     }
   }, [fetchGames]);
 
   useEffect(() => {
-    if (!initAttempted.current) {
-      initializeApp();
-      initAttempted.current = true;
-    }
+    initializeApp();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if ((event === 'SIGNED_IN' || event === 'USER_UPDATED') && session?.user && session.user.email_confirmed_at) {
-        const fullUser = await getFullUser(session.user);
-        setUser(fullUser);
-        const { data: libData } = await supabase.from('user_library').select('game_id').eq('user_id', fullUser.id);
-        if (libData) setLibraryIds(libData.map(item => item.game_id));
+      if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
+        if (session?.user) {
+          const fullUser = await getFullUser(session.user);
+          setUser(fullUser);
+          const { data: libData } = await supabase.from('user_library').select('game_id').eq('user_id', fullUser.id);
+          if (libData) setLibraryIds(libData.map(item => item.game_id));
+        }
       } else if (event === 'SIGNED_OUT') {
         setUser(null);
         setLibraryIds([]);
@@ -200,7 +198,7 @@ const AppContent: React.FC = () => {
       />
 
       <main className="flex-grow pt-32 pb-32 px-6 max-w-[1500px] mx-auto w-full">
-        {/* Cinematic White Header */}
+        {/* Brand Header */}
         <div className="mb-16 animate-fade">
            <div className="flex items-center gap-3 mb-4">
               <Sparkles className="w-5 h-5 text-[#0072ce]" />
@@ -214,7 +212,7 @@ const AppContent: React.FC = () => {
            </p>
         </div>
 
-        {/* Pro Filter Bar (Light) */}
+        {/* Pro Filter Bar */}
         <div className="mb-16 glass-panel p-3 rounded-[3rem] flex flex-col lg:flex-row items-center justify-between gap-6 shadow-xl border border-slate-200">
           <div className="flex items-center gap-2 p-1 bg-slate-100 rounded-full w-full lg:w-auto">
              {['All', 'PS5', 'PS4'].map(p => (
@@ -235,7 +233,7 @@ const AppContent: React.FC = () => {
           </div>
         </div>
 
-        {/* Premium Grid Rendering */}
+        {/* Content Section */}
         <section className="min-h-[700px]">
           {isLoading ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-10">
@@ -299,8 +297,7 @@ const AppContent: React.FC = () => {
         </section>
       </main>
 
-      {/* Light Footer */}
-      <footer className="bg-slate-50 border-t border-slate-100 py-32 px-10">
+      <footer className="bg-slate-50 border-t border-slate-100 py-32 px-10 mt-auto">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-start gap-16">
            <div className="flex flex-col gap-5">
               <div className="flex items-center gap-4">
@@ -311,19 +308,9 @@ const AppContent: React.FC = () => {
                 Next-generation archival preservation gateway for digital entertainment history. Official PlayStation Repository.
               </p>
            </div>
-           <div className="grid grid-cols-2 gap-20 text-[11px] font-black text-slate-400 uppercase tracking-widest">
-              <div className="flex flex-col gap-5">
-                <p className="text-slate-900 text-xs mb-1 font-outfit">Security</p>
-                <a href="#" className="hover:text-[#0072ce]">Encryption</a>
-                <a href="#" className="hover:text-[#0072ce]">Verification</a>
-                <a href="#" className="hover:text-[#0072ce]">Uptime</a>
-              </div>
-              <div className="flex flex-col gap-5">
-                <p className="text-slate-900 text-xs mb-1 font-outfit">Legal</p>
-                <a href="#" className="hover:text-[#0072ce]">Privacy</a>
-                <a href="#" className="hover:text-[#0072ce]">Manifesto</a>
-                <a href="#" className="hover:text-[#0072ce]">DMCA</a>
-              </div>
+           <div className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-full shadow-sm">
+             <Activity className="w-3.5 h-3.5 text-emerald-500" />
+             <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Node Synchronized</span>
            </div>
         </div>
         <div className="mt-32 pt-10 border-t border-slate-200 text-center">
