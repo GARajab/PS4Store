@@ -28,7 +28,6 @@ const AppContent: React.FC = () => {
   const [libraryIds, setLibraryIds] = useState<string[]>([]);
   const [activeTrailer, setActiveTrailer] = useState<Game | null>(null);
 
-  // Request Synchronization Refs
   const isInitializing = useRef(false);
   const lastRequestTime = useRef(0);
 
@@ -57,7 +56,6 @@ const AppContent: React.FC = () => {
   };
 
   const fetchGames = useCallback(async () => {
-    // Throttling to prevent AbortError from rapid re-mounting
     const now = Date.now();
     if (now - lastRequestTime.current < 500) return;
     lastRequestTime.current = now;
@@ -68,12 +66,21 @@ const AppContent: React.FC = () => {
         .select('*')
         .order('download_count', { ascending: false });
 
-      if (error) throw error;
-      setGames(data || []);
+      if (error) {
+        // If table doesn't exist, we don't throw, we just set empty games
+        if (error.code === '42P01' || error.message?.includes('does not exist')) {
+          console.warn("Registry table 'games' not found. Please run the SQL setup in Admin Panel.");
+          setGames([]);
+        } else {
+          throw error;
+        }
+      } else {
+        setGames(data || []);
+      }
       setFetchError(null);
     } catch (err: any) {
-      if (err.name === 'AbortError') return; // Silently ignore cancelled requests
-      console.error("Database sync failed:", err);
+      if (err.name === 'AbortError') return;
+      console.error("Critical Database Sync Error:", err);
       setFetchError(err.message || "Archive synchronization interrupted.");
     } finally {
       setIsLoading(false);
@@ -88,18 +95,7 @@ const AppContent: React.FC = () => {
     setFetchError(null);
     
     try {
-      // 1. Connection Heartbeat Check
-      const { error: hbError } = await supabase.from('games').select('id').limit(1);
-      if (hbError && hbError.code !== 'PGRST116') throw hbError;
-
-      // 2. Fetch Data
-      await fetchGames();
-      
-      // 3. Staggered supplementary loads
-      const { count } = await supabase.from('reports').select('*', { count: 'exact', head: true }).eq('status', 'pending');
-      setReportCount(count || 0);
-
-      // 4. Session Recovery
+      // 1. Fetch Session First (Fastest)
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
         const fullUser = await getFullUser(session.user);
@@ -107,14 +103,29 @@ const AppContent: React.FC = () => {
         const { data: libData } = await supabase.from('user_library').select('game_id').eq('user_id', fullUser.id);
         if (libData) setLibraryIds(libData.map(item => item.game_id));
       }
+
+      // 2. Fetch Data
+      await fetchGames();
+      
+      // 3. Staggered supplementary loads
+      try {
+        const { count } = await supabase.from('reports').select('*', { count: 'exact', head: true }).eq('status', 'pending');
+        setReportCount(count || 0);
+      } catch (e) {
+        // Silently fail report count if table doesn't exist
+      }
+
     } catch (err: any) {
-      console.error("System init failure:", err);
-      setFetchError("Database unreachable. Ensure Supabase credentials are valid.");
+      console.error("System Initialization failed:", err);
+      // We only show hard error if we have NO games and it's not a 'table not found' error
+      if (games.length === 0) {
+        setFetchError("Master connection handshake failed. Check your network or project status.");
+      }
     } finally {
       setIsLoading(false);
       isInitializing.current = false;
     }
-  }, [fetchGames]);
+  }, [fetchGames, games.length]);
 
   useEffect(() => {
     initializeApp();
@@ -198,7 +209,6 @@ const AppContent: React.FC = () => {
       />
 
       <main className="flex-grow pt-32 pb-32 px-6 max-w-[1500px] mx-auto w-full">
-        {/* Brand Header */}
         <div className="mb-16 animate-fade">
            <div className="flex items-center gap-3 mb-4">
               <Sparkles className="w-5 h-5 text-[#0072ce]" />
@@ -212,7 +222,6 @@ const AppContent: React.FC = () => {
            </p>
         </div>
 
-        {/* Pro Filter Bar */}
         <div className="mb-16 glass-panel p-3 rounded-[3rem] flex flex-col lg:flex-row items-center justify-between gap-6 shadow-xl border border-slate-200">
           <div className="flex items-center gap-2 p-1 bg-slate-100 rounded-full w-full lg:w-auto">
              {['All', 'PS5', 'PS4'].map(p => (
@@ -233,7 +242,6 @@ const AppContent: React.FC = () => {
           </div>
         </div>
 
-        {/* Content Section */}
         <section className="min-h-[700px]">
           {isLoading ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-10">
@@ -283,9 +291,12 @@ const AppContent: React.FC = () => {
                 >
                   Reset Catalog
                 </button>
-                {user?.isAdmin && (
+                {(!user || user?.isAdmin) && (
                    <button 
-                    onClick={() => setShowAdminPanel(true)}
+                    onClick={() => {
+                      if (!user) setShowAuthModal(true);
+                      else setShowAdminPanel(true);
+                    }}
                     className="px-12 py-5 bg-white border border-slate-200 text-slate-900 rounded-full text-[12px] font-black uppercase tracking-widest active:scale-95"
                   >
                     Setup Registry
@@ -309,8 +320,10 @@ const AppContent: React.FC = () => {
               </p>
            </div>
            <div className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-full shadow-sm">
-             <Activity className="w-3.5 h-3.5 text-emerald-500" />
-             <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Node Synchronized</span>
+             <Activity className={`w-3.5 h-3.5 ${fetchError ? 'text-red-500' : 'text-emerald-500'}`} />
+             <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">
+               {fetchError ? 'Node Offline' : 'Node Synchronized'}
+             </span>
            </div>
         </div>
         <div className="mt-32 pt-10 border-t border-slate-200 text-center">
