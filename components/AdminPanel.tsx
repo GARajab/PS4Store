@@ -34,8 +34,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ games, initialGame, onUpdateGam
   const [isLoadingUsers, setIsLoadingUsers] = useState(false);
   const [languageInput, setLanguageInput] = useState('');
 
-  const sqlSchema = `-- 1. GAMES TABLE
-CREATE TABLE games (
+  const sqlSchema = `-- RUN THIS IN YOUR SUPABASE SQL EDITOR TO FIX SCHEMA ERRORS
+-- 1. GAMES TABLE
+CREATE TABLE IF NOT EXISTS games (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   title TEXT NOT NULL,
   description TEXT,
@@ -50,8 +51,12 @@ CREATE TABLE games (
   updates JSONB DEFAULT '[]'
 );
 
+-- ADD MISSING COLUMNS IF TABLE ALREADY EXISTS
+ALTER TABLE games ADD COLUMN IF NOT EXISTS languages JSONB DEFAULT '[]';
+ALTER TABLE games ADD COLUMN IF NOT EXISTS updates JSONB DEFAULT '[]';
+
 -- 2. PROFILES TABLE
-CREATE TABLE profiles (
+CREATE TABLE IF NOT EXISTS profiles (
   id UUID REFERENCES auth.users ON DELETE CASCADE PRIMARY KEY,
   username TEXT,
   email TEXT,
@@ -59,7 +64,7 @@ CREATE TABLE profiles (
 );
 
 -- 3. USER LIBRARY
-CREATE TABLE user_library (
+CREATE TABLE IF NOT EXISTS user_library (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id UUID REFERENCES auth.users ON DELETE CASCADE,
   game_id UUID REFERENCES games ON DELETE CASCADE,
@@ -67,7 +72,7 @@ CREATE TABLE user_library (
 );
 
 -- 4. REPORTS
-CREATE TABLE reports (
+CREATE TABLE IF NOT EXISTS reports (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   game_id UUID REFERENCES games ON DELETE CASCADE,
   user_id UUID REFERENCES auth.users,
@@ -75,16 +80,18 @@ CREATE TABLE reports (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
--- TRIGGER FOR NEW USERS
+-- TRIGGER FOR NEW USERS (IF NOT ALREADY SET)
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger AS $$
 BEGIN
   INSERT INTO public.profiles (id, username, email)
-  VALUES (new.id, new.raw_user_meta_data->>'username', new.email);
+  VALUES (new.id, new.raw_user_meta_data->>'username', new.email)
+  ON CONFLICT (id) DO NOTHING;
   RETURN new;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();`;
@@ -204,7 +211,7 @@ CREATE TRIGGER on_auth_user_created
       setEditingGame(null);
       setLanguageInput('');
     } catch (err: any) {
-      showToast('error', 'Write Error', err.message);
+      showToast('error', 'Write Error', "Please ensure you have run the SQL setup in the 'System Setup' tab.");
     } finally {
       setIsSaving(false);
     }
@@ -328,20 +335,20 @@ CREATE TRIGGER on_auth_user_created
               <div className="max-w-2xl mx-auto space-y-8 animate-slide-up">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Title</label>
+                    <label className="text-[10px] font-black uppercase text-slate-500 ml-1">Title</label>
                     <input 
                       type="text" value={editingGame.title || ''} 
                       onChange={e => setEditingGame({ ...editingGame, title: e.target.value })} 
-                      className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm text-slate-900 focus:bg-white focus:ring-4 focus:ring-blue-500/5 transition-all outline-none" 
+                      className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm text-black focus:bg-white focus:ring-4 focus:ring-blue-500/5 transition-all outline-none" 
                       placeholder="e.g. God of War Ragnarök"
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Platform</label>
+                    <label className="text-[10px] font-black uppercase text-slate-500 ml-1">Platform</label>
                     <select 
                       value={editingGame.platform || 'PS4'} 
                       onChange={e => setEditingGame({ ...editingGame, platform: e.target.value as Platform })} 
-                      className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm text-slate-900 focus:bg-white transition-all outline-none"
+                      className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm text-black focus:bg-white transition-all outline-none"
                     >
                       <option value="PS4">PlayStation 4</option>
                       <option value="PS5">PlayStation 5</option>
@@ -350,7 +357,7 @@ CREATE TRIGGER on_auth_user_created
                   </div>
                   <div className="md:col-span-2 space-y-2">
                     <div className="flex justify-between items-center px-1">
-                      <label className="text-[10px] font-black uppercase text-slate-400">Description</label>
+                      <label className="text-[10px] font-black uppercase text-slate-500">Description</label>
                       <button 
                         onClick={handleMagicDescription}
                         disabled={isGenerating || !editingGame.title}
@@ -362,48 +369,48 @@ CREATE TRIGGER on_auth_user_created
                     <textarea 
                       value={editingGame.description || ''} 
                       onChange={e => setEditingGame({ ...editingGame, description: e.target.value })} 
-                      className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl h-32 font-medium text-sm text-slate-900 focus:bg-white transition-all outline-none" 
+                      className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl h-32 font-medium text-sm text-black focus:bg-white transition-all outline-none" 
                       placeholder="Enter a captivating description for this title..."
                     />
                   </div>
                   <div className="md:col-span-2 space-y-2">
-                    <label className="text-[10px] font-black uppercase text-slate-400 ml-1 flex items-center gap-2">
+                    <label className="text-[10px] font-black uppercase text-slate-500 ml-1 flex items-center gap-2">
                       <Globe className="w-3 h-3" /> Supported Languages
                     </label>
                     <input 
                       type="text" value={languageInput} 
                       onChange={e => setLanguageInput(e.target.value)} 
-                      className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm text-slate-900 outline-none focus:bg-white transition-all" 
+                      className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm text-black outline-none focus:bg-white transition-all" 
                       placeholder="e.g. English, Spanish, French, Japanese"
                     />
                     <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider ml-1 italic">Separate languages with commas</p>
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Image URL</label>
+                    <label className="text-[10px] font-black uppercase text-slate-500 ml-1">Image URL</label>
                     <input 
                       type="text" value={editingGame.imageUrl || ''} 
                       onChange={e => setEditingGame({ ...editingGame, imageUrl: e.target.value })} 
-                      className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm text-slate-900 outline-none" 
+                      className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm text-black outline-none" 
                       placeholder="https://..."
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Download Source URL</label>
+                    <label className="text-[10px] font-black uppercase text-slate-500 ml-1">Download Source URL</label>
                     <input 
                       type="text" value={editingGame.downloadUrl || ''} 
                       onChange={e => setEditingGame({ ...editingGame, downloadUrl: e.target.value })} 
-                      className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm text-slate-900 outline-none"
+                      className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm text-black outline-none"
                       placeholder="https://secure-node..."
                     />
                   </div>
                   <div className="md:col-span-2 space-y-2">
-                    <label className="text-[10px] font-black uppercase text-slate-400 ml-1 flex items-center gap-2">
+                    <label className="text-[10px] font-black uppercase text-slate-500 ml-1 flex items-center gap-2">
                       <Video className="w-3 h-3" /> YouTube Trailer URL / ID
                     </label>
                     <input 
                       type="text" value={editingGame.trailerUrl || ''} 
                       onChange={e => setEditingGame({ ...editingGame, trailerUrl: e.target.value })} 
-                      className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm text-slate-900 outline-none focus:bg-white transition-all"
+                      className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm text-black outline-none focus:bg-white transition-all"
                       placeholder="e.g. https://www.youtube.com/watch?v=dQw4w9WgXcQ"
                     />
                   </div>
@@ -486,7 +493,7 @@ CREATE TRIGGER on_auth_user_created
                   <div className="flex items-center justify-between mb-6">
                     <div className="flex items-center gap-3">
                       <Terminal className="w-6 h-6 text-blue-400" />
-                      <h4 className="text-white font-black font-outfit uppercase tracking-tight">SQL Schema Guide</h4>
+                      <h4 className="text-white font-black font-outfit uppercase tracking-tight">Database Infrastructure</h4>
                     </div>
                     <button 
                       onClick={() => { navigator.clipboard.writeText(sqlSchema); showToast('success', 'Copied to Clipboard', 'SQL Schema ready to paste.'); }}
@@ -494,6 +501,11 @@ CREATE TRIGGER on_auth_user_created
                     >
                       Copy SQL Code
                     </button>
+                  </div>
+                  <div className="bg-amber-900/20 border border-amber-500/30 rounded-xl p-4 mb-6">
+                    <p className="text-[10px] font-black text-amber-400 uppercase tracking-widest leading-relaxed">
+                      ⚠️ CRITICAL: To fix "languages column not found", copy this code and run it in your Supabase SQL Editor.
+                    </p>
                   </div>
                   <pre className="bg-black/50 p-6 rounded-2xl overflow-x-auto text-[11px] font-mono text-slate-300 leading-relaxed border border-white/5">
                     {sqlSchema}
