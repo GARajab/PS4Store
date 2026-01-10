@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Game, User, Platform } from './types';
 import { supabase } from './lib/supabase';
 import GameCard from './components/GameCard';
@@ -28,52 +28,48 @@ const AppContent: React.FC = () => {
   const [libraryIds, setLibraryIds] = useState<string[]>([]);
   const [activeTrailer, setActiveTrailer] = useState<Game | null>(null);
 
+  const authHandshakeRef = useRef(false);
+
   /**
-   * High-Precision User Data Sync
-   * Fetches profile and user library in a single pass
+   * REFINED IDENTITY SYNC
+   * Uses non-blocking logic to ensure the UI remains responsive
    */
   const syncUserIdentity = useCallback(async (sbUser: any) => {
     if (!sbUser) return;
+    
+    // Set basic user info immediately from session metadata to prevent "Logged Out" flicker
+    setUser({
+      id: sbUser.id,
+      username: sbUser.user_metadata?.username || sbUser.email?.split('@')[0] || 'Player',
+      email: sbUser.email || '',
+      isAdmin: sbUser.email?.toLowerCase().includes('admin') || false,
+    });
+
     try {
-      // 1. Fetch Profile and Library concurrently
+      // Background fetch for full profile and library
       const [profileRes, libraryRes] = await Promise.all([
         supabase.from('profiles').select('*').eq('id', sbUser.id).single(),
         supabase.from('user_library').select('game_id').eq('user_id', sbUser.id)
       ]);
 
-      let profile = profileRes.data;
-
-      // 2. Self-Healing: Create profile if missing
-      if (!profile && profileRes.error?.code === 'PGRST116') {
-        const { data: newProfile } = await supabase.from('profiles').insert([{
-          id: sbUser.id,
-          username: sbUser.user_metadata?.username || sbUser.email?.split('@')[0],
-          email: sbUser.email,
-          is_admin: sbUser.email?.toLowerCase().includes('admin') || false
-        }]).select().single();
-        profile = newProfile;
+      if (profileRes.data) {
+        setUser(prev => prev ? {
+          ...prev,
+          username: profileRes.data.username || prev.username,
+          isAdmin: profileRes.data.is_admin || prev.isAdmin
+        } : null);
+        
+        if (profileRes.data.is_admin) {
+          const { count } = await supabase.from('reports').select('*', { count: 'exact', head: true }).eq('status', 'pending');
+          setReportCount(count || 0);
+        }
       }
 
-      // 3. Update Global Auth State
-      setUser({
-        id: sbUser.id,
-        username: profile?.username || sbUser.user_metadata?.username || 'Unknown Player',
-        email: sbUser.email || '',
-        isAdmin: profile?.is_admin || false,
-      });
-
-      // 4. Update Library State
       if (libraryRes.data) {
         setLibraryIds(libraryRes.data.map(item => item.game_id));
       }
-
-      // 5. Admin Utilities
-      if (profile?.is_admin) {
-        const { count } = await supabase.from('reports').select('*', { count: 'exact', head: true }).eq('status', 'pending');
-        setReportCount(count || 0);
-      }
     } catch (e) {
-      console.error("[Auth] Sync identity failed:", e);
+      console.warn("[Auth] Background sync encountered issues, using session defaults.");
     }
   }, []);
 
@@ -81,13 +77,9 @@ const AppContent: React.FC = () => {
     setIsLoadingGames(true);
     try {
       const { data, error } = await supabase.from('games').select('*').order('download_count', { ascending: false });
-      if (error) {
-        if (error.code === '42P01') setFetchError("System Error: Vault structure not found. Admin setup required.");
-        else throw error;
-      } else {
-        setGames(data || []);
-        setFetchError(null);
-      }
+      if (error) throw error;
+      setGames(data || []);
+      setFetchError(null);
     } catch (err: any) {
       setFetchError(err.message || "Archive link unstable.");
     } finally {
@@ -96,43 +88,58 @@ const AppContent: React.FC = () => {
   }, []);
 
   /**
-   * CORE LIFECYCLE OBSERVER
+   * FAILSAFE BOOT SEQUENCE
    */
   useEffect(() => {
-    // 1. First fetch for initial catalog
+    // 1. Immediate Session Recovery
+    const recoverSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        await syncUserIdentity(session.user);
+      }
+      authHandshakeRef.current = true;
+      setIsBooting(false);
+    };
+
+    recoverSession();
     fetchGames();
 
-    // 2. Dedicated Auth Listener - Handles everything from boot to runtime changes
+    // 2. Fallback Timeout: If recovery hangs for more than 2.5s, force app load
+    const bootTimer = setTimeout(() => {
+      if (isBooting) {
+        console.warn("[System] Boot taking too long, forcing UI activation.");
+        setIsBooting(false);
+      }
+    }, 2500);
+
+    // 3. Auth State Observer
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log(`[System] Auth Pulse: ${event}`);
       
       if (session?.user) {
         await syncUserIdentity(session.user);
-      } else {
+      } else if (event === 'SIGNED_OUT') {
         setUser(null);
         setLibraryIds([]);
       }
       
-      // Mark boot as complete once the first auth pulse is processed
-      setIsBooting(false);
+      // Mark boot as complete if not already
+      if (isBooting) setIsBooting(false);
     });
 
     return () => {
+      clearTimeout(bootTimer);
       subscription.unsubscribe();
     };
   }, [fetchGames, syncUserIdentity]);
 
   const handleDownload = async (game: Game) => {
-    if (!user) {
-      setShowAuthModal(true);
-      return;
-    }
+    if (!user) { setShowAuthModal(true); return; }
     try {
       if (!libraryIds.includes(game.id)) {
-        const { error } = await supabase.from('user_library').insert([{ user_id: user.id, game_id: game.id }]);
-        if (error) throw error;
+        await supabase.from('user_library').insert([{ user_id: user.id, game_id: game.id }]);
         setLibraryIds(prev => [...prev, game.id]);
-        showToast('success', 'Library Updated', `${game.title} archived to your node.`);
+        showToast('success', 'Library Updated', `${game.title} archived.`);
       }
       await supabase.from('games').update({ download_count: (game.download_count || 0) + 1 }).eq('id', game.id);
       setGames(prev => prev.map(g => g.id === game.id ? { ...g, download_count: (g.download_count || 0) + 1 } : g));
@@ -164,7 +171,6 @@ const AppContent: React.FC = () => {
     });
   }, [games, searchQuery, filterPlatform, viewMode, libraryIds]);
 
-  // Professional Boot Screen
   if (isBooting) {
     return (
       <div className="fixed inset-0 bg-white flex flex-col items-center justify-center z-[1000]">
@@ -230,7 +236,7 @@ const AppContent: React.FC = () => {
           ) : fetchError ? (
             <div className="py-40 text-center glass-panel rounded-[4rem] border border-red-100 bg-red-50/30">
               <WifiOff className="w-20 h-20 text-red-200 mx-auto mb-8" />
-              <h3 className="text-3xl font-black font-outfit uppercase text-red-600 mb-3 tracking-tighter">Connection Interrupted</h3>
+              <h3 className="text-3xl font-black font-outfit uppercase text-red-600 mb-3 tracking-tighter">Sync Interrupted</h3>
               <p className="text-slate-500 text-lg font-medium mb-12 max-w-md mx-auto">{fetchError}</p>
               <button onClick={fetchGames} className="px-12 py-5 bg-[#0072ce] text-white rounded-full text-[12px] font-black uppercase tracking-widest shadow-xl flex items-center justify-center gap-3 mx-auto">
                 <RefreshCw className="w-4 h-4" /> Reconnect
