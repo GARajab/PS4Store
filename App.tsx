@@ -28,16 +28,16 @@ const AppContent: React.FC = () => {
   const [libraryIds, setLibraryIds] = useState<string[]>([]);
   const [activeTrailer, setActiveTrailer] = useState<Game | null>(null);
 
-  const authHandshakeRef = useRef(false);
+  const initialSyncDone = useRef(false);
 
   /**
-   * REFINED IDENTITY SYNC
-   * Uses non-blocking logic to ensure the UI remains responsive
+   * SILENT BACKGROUND SYNC
+   * Ensures database records (profiles/library) match the Auth session
    */
-  const syncUserIdentity = useCallback(async (sbUser: any) => {
-    if (!sbUser) return;
+  const performBackgroundSync = useCallback(async (sbUser: any) => {
+    if (!sbUser || initialSyncDone.current) return;
     
-    // Set basic user info immediately from session metadata to prevent "Logged Out" flicker
+    // Step 1: Immediate optimistic user state from Auth Metadata
     setUser({
       id: sbUser.id,
       username: sbUser.user_metadata?.username || sbUser.email?.split('@')[0] || 'Player',
@@ -46,12 +46,13 @@ const AppContent: React.FC = () => {
     });
 
     try {
-      // Background fetch for full profile and library
+      // Step 2: Parallel fetch for database-specific data
       const [profileRes, libraryRes] = await Promise.all([
         supabase.from('profiles').select('*').eq('id', sbUser.id).single(),
         supabase.from('user_library').select('game_id').eq('user_id', sbUser.id)
       ]);
 
+      // Step 3: Handle database alignment
       if (profileRes.data) {
         setUser(prev => prev ? {
           ...prev,
@@ -63,13 +64,24 @@ const AppContent: React.FC = () => {
           const { count } = await supabase.from('reports').select('*', { count: 'exact', head: true }).eq('status', 'pending');
           setReportCount(count || 0);
         }
+      } else if (profileRes.error?.code === 'PGRST116') {
+        // Self-healing: Database entry missing, user is "out of sync"
+        console.warn("[System] Database profile missing, initiating auto-recovery...");
+        await supabase.from('profiles').insert([{
+          id: sbUser.id,
+          username: sbUser.user_metadata?.username || sbUser.email?.split('@')[0],
+          email: sbUser.email,
+          is_admin: sbUser.email?.toLowerCase().includes('admin') || false
+        }]);
       }
 
       if (libraryRes.data) {
         setLibraryIds(libraryRes.data.map(item => item.game_id));
       }
+      
+      initialSyncDone.current = true;
     } catch (e) {
-      console.warn("[Auth] Background sync encountered issues, using session defaults.");
+      console.warn("[System] Background sync latency detected.");
     }
   }, []);
 
@@ -88,50 +100,43 @@ const AppContent: React.FC = () => {
   }, []);
 
   /**
-   * FAILSAFE BOOT SEQUENCE
+   * ATOMIC BOOT SEQUENCE
    */
   useEffect(() => {
-    // 1. Immediate Session Recovery
-    const recoverSession = async () => {
+    const boot = async () => {
+      // 1. Recover session from storage immediately
       const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        await syncUserIdentity(session.user);
-      }
-      authHandshakeRef.current = true;
-      setIsBooting(false);
-    };
-
-    recoverSession();
-    fetchGames();
-
-    // 2. Fallback Timeout: If recovery hangs for more than 2.5s, force app load
-    const bootTimer = setTimeout(() => {
-      if (isBooting) {
-        console.warn("[System] Boot taking too long, forcing UI activation.");
-        setIsBooting(false);
-      }
-    }, 2500);
-
-    // 3. Auth State Observer
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log(`[System] Auth Pulse: ${event}`);
       
       if (session?.user) {
-        await syncUserIdentity(session.user);
+        // Start background sync but DO NOT wait for it to finish to hide loader
+        performBackgroundSync(session.user);
+      }
+      
+      // 2. Clear loading state as soon as session is verified (or not)
+      setIsBooting(false);
+      
+      // 3. Fetch public data
+      fetchGames();
+    };
+
+    boot();
+
+    // 4. Global Auth Observer
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log(`[Pulse] Auth Event: ${event}`);
+      if (session?.user) {
+        await performBackgroundSync(session.user);
       } else if (event === 'SIGNED_OUT') {
         setUser(null);
         setLibraryIds([]);
+        initialSyncDone.current = false;
       }
-      
-      // Mark boot as complete if not already
-      if (isBooting) setIsBooting(false);
     });
 
     return () => {
-      clearTimeout(bootTimer);
       subscription.unsubscribe();
     };
-  }, [fetchGames, syncUserIdentity]);
+  }, [fetchGames, performBackgroundSync]);
 
   const handleDownload = async (game: Game) => {
     if (!user) { setShowAuthModal(true); return; }
@@ -139,7 +144,7 @@ const AppContent: React.FC = () => {
       if (!libraryIds.includes(game.id)) {
         await supabase.from('user_library').insert([{ user_id: user.id, game_id: game.id }]);
         setLibraryIds(prev => [...prev, game.id]);
-        showToast('success', 'Library Updated', `${game.title} archived.`);
+        showToast('success', 'Library Sync', `${game.title} archived.`);
       }
       await supabase.from('games').update({ download_count: (game.download_count || 0) + 1 }).eq('id', game.id);
       setGames(prev => prev.map(g => g.id === game.id ? { ...g, download_count: (g.download_count || 0) + 1 } : g));
@@ -173,9 +178,9 @@ const AppContent: React.FC = () => {
 
   if (isBooting) {
     return (
-      <div className="fixed inset-0 bg-white flex flex-col items-center justify-center z-[1000]">
+      <div className="fixed inset-0 bg-white flex flex-col items-center justify-center z-[1000] animate-fade">
         <LogoSpinner />
-        <p className="mt-8 text-[10px] font-black uppercase tracking-[0.4em] text-slate-400 animate-pulse">Initializing Secure Protocol</p>
+        <p className="mt-8 text-[10px] font-black uppercase tracking-[0.4em] text-slate-400 animate-pulse">Establishing Node Link</p>
       </div>
     );
   }
@@ -187,7 +192,7 @@ const AppContent: React.FC = () => {
         onAuthClick={() => setShowAuthModal(true)} 
         onLogout={async () => { 
           await supabase.auth.signOut();
-          showToast('info', 'Session Ended', 'Gateway connection terminated.');
+          showToast('info', 'Disconnected', 'Session has been purged.');
         }}
         onAdminClick={() => { setEditingGame(null); setShowAdminPanel(true); }}
         onLibraryClick={() => setViewMode('library')}
@@ -198,13 +203,13 @@ const AppContent: React.FC = () => {
         <div className="mb-16 animate-fade">
            <div className="flex items-center gap-3 mb-4">
               <Sparkles className="w-5 h-5 text-[#0072ce]" />
-              <span className="text-[11px] font-black uppercase tracking-[0.4em] text-[#0072ce]">The Horizon Collection</span>
+              <span className="text-[11px] font-black uppercase tracking-[0.4em] text-[#0072ce]">Secured Vault Sector</span>
            </div>
            <h1 className="text-5xl md:text-7xl font-black font-outfit uppercase tracking-tighter mb-4 leading-[0.9] text-[#0072ce]">
-             Digital <br/><span className="text-slate-900">Archive</span>
+             Horizon <br/><span className="text-slate-900">Repository</span>
            </h1>
            <p className="max-w-2xl text-slate-500 font-medium text-lg">
-             The premium repository for PlayStation legacy titles. Secure. Free. Forever.
+             Next-generation archival protocol for the PlayStation ecosystem.
            </p>
         </div>
 
@@ -221,7 +226,7 @@ const AppContent: React.FC = () => {
           <div className="relative w-full lg:w-[450px]">
              <Search className="absolute left-7 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
              <input 
-               type="text" placeholder="SEARCH CATALOG..."
+               type="text" placeholder="QUERY THE ARCHIVE..."
                value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
                className="w-full pl-16 pr-8 py-5 rounded-full bg-slate-100 border border-transparent focus:border-[#0072ce]/20 focus:bg-white outline-none font-bold text-sm tracking-widest text-slate-900 placeholder:text-slate-400 transition-all uppercase"
              />
@@ -239,7 +244,7 @@ const AppContent: React.FC = () => {
               <h3 className="text-3xl font-black font-outfit uppercase text-red-600 mb-3 tracking-tighter">Sync Interrupted</h3>
               <p className="text-slate-500 text-lg font-medium mb-12 max-w-md mx-auto">{fetchError}</p>
               <button onClick={fetchGames} className="px-12 py-5 bg-[#0072ce] text-white rounded-full text-[12px] font-black uppercase tracking-widest shadow-xl flex items-center justify-center gap-3 mx-auto">
-                <RefreshCw className="w-4 h-4" /> Reconnect
+                <RefreshCw className="w-4 h-4" /> Re-Archive
               </button>
             </div>
           ) : filteredGames.length > 0 ? (
@@ -259,9 +264,9 @@ const AppContent: React.FC = () => {
           ) : (
             <div className="py-40 text-center glass-panel rounded-[4rem] border border-slate-100">
               <Database className="w-20 h-20 text-slate-100 mx-auto mb-8" />
-              <h3 className="text-3xl font-black font-outfit uppercase text-[#0072ce] mb-3 tracking-tighter">Vault Silent</h3>
-              <p className="text-slate-400 text-lg font-medium mb-12">No titles found for your search parameters.</p>
-              <button onClick={() => { setSearchQuery(''); setFilterPlatform('All'); }} className="px-12 py-5 btn-primary rounded-full text-[12px] font-black uppercase tracking-widest">Clear Filters</button>
+              <h3 className="text-3xl font-black font-outfit uppercase text-[#0072ce] mb-3 tracking-tighter">Vault Empty</h3>
+              <p className="text-slate-400 text-lg font-medium mb-12">No data signals found in this sector.</p>
+              <button onClick={() => { setSearchQuery(''); setFilterPlatform('All'); }} className="px-12 py-5 btn-primary rounded-full text-[12px] font-black uppercase tracking-widest">Clear Query</button>
             </div>
           )}
         </section>
@@ -275,12 +280,12 @@ const AppContent: React.FC = () => {
                 <span className="text-2xl font-black tracking-tighter uppercase font-outfit text-[#0072ce]">PLAYFREE</span>
               </div>
               <p className="text-slate-500 text-base font-bold max-w-sm">
-                Authentic preservation of the PlayStation ecosystem.
+                Professional preservation of PlayStation digital media.
               </p>
            </div>
            <div className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-full shadow-sm">
              <Activity className="w-3.5 h-3.5 text-emerald-500" />
-             <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">System Nominal</span>
+             <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Node Sync Nominal</span>
            </div>
         </div>
       </footer>

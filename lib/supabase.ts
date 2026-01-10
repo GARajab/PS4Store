@@ -22,19 +22,19 @@ const supabaseUrl = getEnv('SUPABASE_URL', MASTER_URL);
 const supabaseAnonKey = getEnv('SUPABASE_ANON_KEY', MASTER_KEY);
 
 /**
- * Professional-Grade Supabase Client
- * persistSession: true ensures tokens are saved in localStorage
- * autoRefreshToken: true handles session extension in the background
+ * Enterprise-Grade Supabase Configuration
+ * Uses versioned storage key to prevent stale session conflicts.
  */
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    autoRefreshToken: true,
     persistSession: true,
+    autoRefreshToken: true,
     detectSessionInUrl: true,
-    storageKey: 'playfree-core-session-v1', // Permanent key for production stability
-    flowType: 'pkce'
+    storageKey: 'playfree-v11-auth-stable', 
+    flowType: 'pkce',
+    storage: window.localStorage // Explicitly use browser storage
   },
   global: {
-    headers: { 'x-application-name': 'playfree-pro' }
+    headers: { 'x-application-name': 'playfree-pro-archivist' }
   }
 });
