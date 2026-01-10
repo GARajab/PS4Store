@@ -156,76 +156,50 @@ const AppContent: React.FC = () => {
         onHomeClick={() => setViewMode('store')}
       />
 
-      <main className="flex-grow pt-32 pb-20 px-6 max-w-[1400px] mx-auto w-full">
-        {/* Cinematic Header Section */}
+      <main className="flex-grow pt-32 pb-32 px-6 max-w-[1500px] mx-auto w-full">
+        {/* Elite Header */}
         <div className="mb-16 animate-fade">
-           <div className="flex items-center gap-2 mb-2">
-              <Sparkles className="w-4 h-4 text-blue-400" />
-              <span className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-400">Database Active</span>
+           <div className="flex items-center gap-3 mb-4">
+              <Sparkles className="w-5 h-5 text-blue-500" />
+              <span className="text-[11px] font-black uppercase tracking-[0.4em] text-blue-500">Live Server Status: Optimal</span>
            </div>
-           <h1 className="text-4xl md:text-6xl font-black font-outfit uppercase tracking-tighter mb-4 leading-none">
-             Explore the <br/><span className="text-blue-500">Multiverse</span>
+           <h1 className="text-5xl md:text-7xl font-black font-outfit uppercase tracking-tighter mb-4 leading-[0.9]">
+             The Ultimate <br/><span className="text-blue-600">Archival</span> Vault
            </h1>
-           <p className="max-w-xl text-slate-400 font-medium text-sm leading-relaxed">
-             Secure, encrypted repository for PlayStation archival titles. All digital assets are verified and distributed through peer-to-peer nodes.
+           <p className="max-w-2xl text-slate-400 font-medium text-lg leading-relaxed">
+             Access the world's most complete digital repository for PlayStation 4 & 5. High-fidelity verification. Zero fees.
            </p>
         </div>
 
-        {/* Global Controls Panel */}
-        <div className="mb-12 glass-panel p-2 rounded-[2.5rem] flex flex-col lg:flex-row items-center justify-between gap-4 shadow-2xl">
-          <div className="flex items-center gap-2 p-1 bg-white/5 rounded-[2rem] border border-white/5 w-full lg:w-auto">
+        {/* Pro Filter Bar */}
+        <div className="mb-16 glass-panel p-3 rounded-[3rem] flex flex-col lg:flex-row items-center justify-between gap-6 shadow-2xl">
+          <div className="flex items-center gap-2 p-1 bg-black/40 rounded-full border border-white/5 w-full lg:w-auto">
              {['All', 'PS5', 'PS4'].map(p => (
                <button
                  key={p} onClick={() => setFilterPlatform(p as any)}
-                 className={`flex-grow lg:flex-none px-8 py-3 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${filterPlatform === p ? 'bg-white text-black shadow-xl' : 'text-slate-400 hover:text-white'}`}
+                 className={`flex-grow lg:flex-none px-10 py-3.5 rounded-full text-[11px] font-black uppercase tracking-widest transition-all ${filterPlatform === p ? 'bg-white text-black shadow-2xl' : 'text-slate-500 hover:text-white'}`}
                >{p}</button>
              ))}
           </div>
 
-          <div className="relative w-full lg:w-96">
-             <Search className="absolute left-6 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+          <div className="relative w-full lg:w-[450px]">
+             <Search className="absolute left-7 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-700" />
              <input 
-               type="text" placeholder="QUERY DATABASE..."
+               type="text" placeholder="QUERY MASTER DATABASE..."
                value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-               className="w-full pl-14 pr-6 py-4 rounded-[2rem] bg-black/40 border border-white/10 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none font-bold text-[11px] tracking-widest text-white placeholder:text-slate-600 transition-all uppercase"
+               className="w-full pl-16 pr-8 py-5 rounded-full bg-black/40 border border-white/5 focus:border-blue-500/40 outline-none font-bold text-xs tracking-widest text-white placeholder:text-slate-800 transition-all uppercase"
              />
           </div>
         </div>
 
-        {/* Grid Header */}
-        <div className="mb-10 flex items-center justify-between px-2">
-           <div className="flex items-center gap-4">
-              <div className="w-10 h-10 rounded-2xl bg-blue-500/10 flex items-center justify-center text-blue-400 border border-blue-500/20">
-                {viewMode === 'store' ? <TrendingUp className="w-5 h-5" /> : <Library className="w-5 h-5" />}
-              </div>
-              <div>
-                <h2 className="text-xl font-black font-outfit uppercase tracking-tighter">
-                  {viewMode === 'store' ? 'Master Collection' : 'Private Storage'}
-                </h2>
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{filteredGames.length} Verified Entries</p>
-              </div>
-           </div>
-           
-           <div className="flex bg-white/5 p-1 rounded-xl border border-white/5">
-              <button 
-                onClick={() => setViewMode('store')}
-                className={`p-2 rounded-lg transition-all ${viewMode === 'store' ? 'bg-white text-black' : 'text-slate-500 hover:text-white'}`}
-              ><LayoutGrid className="w-4 h-4" /></button>
-              <button 
-                onClick={() => setViewMode('library')}
-                className={`p-2 rounded-lg transition-all ${viewMode === 'library' ? 'bg-white text-black' : 'text-slate-500 hover:text-white'}`}
-              ><Library className="w-4 h-4" /></button>
-           </div>
-        </div>
-
-        {/* Dynamic Grid Rendering */}
-        <section className="min-h-[600px]">
+        {/* Premium Grid Rendering */}
+        <section className="min-h-[700px]">
           {isLoading ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-x-6 gap-y-12">
-              {[...Array(12)].map((_, i) => <SkeletonCard key={i} />)}
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-10">
+              {[...Array(10)].map((_, i) => <SkeletonCard key={i} />)}
             </div>
           ) : filteredGames.length > 0 ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-x-6 gap-y-12">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-x-8 gap-y-12">
               {filteredGames.map(game => (
                 <GameCard 
                   key={game.id} game={game} 
@@ -239,35 +213,51 @@ const AppContent: React.FC = () => {
               ))}
             </div>
           ) : (
-            <div className="py-40 text-center glass-panel rounded-[3rem] border border-white/5 animate-fade">
-              <Gamepad2 className="w-16 h-16 text-slate-800 mx-auto mb-6" />
-              <h3 className="text-2xl font-black font-outfit uppercase text-white mb-2">Registry Empty</h3>
-              <p className="text-slate-500 text-sm font-medium mb-10">No matching identifiers found in the current sector.</p>
+            <div className="py-40 text-center glass-panel rounded-[4rem] border border-white/5 animate-fade">
+              <Gamepad2 className="w-20 h-20 text-slate-900 mx-auto mb-8" />
+              <h3 className="text-3xl font-black font-outfit uppercase text-white mb-3 tracking-tighter">Null Result</h3>
+              <p className="text-slate-500 text-lg font-medium mb-12">No matching archival signatures found in this sector.</p>
               <button 
                 onClick={() => {setSearchQuery(''); setFilterPlatform('All'); setViewMode('store');}}
-                className="px-10 py-4 bg-blue-600 text-white rounded-[2rem] text-[11px] font-black uppercase tracking-widest hover:bg-blue-500 shadow-2xl shadow-blue-500/20 transition-all active:scale-95"
+                className="px-12 py-5 btn-primary text-black rounded-full text-[12px] font-black uppercase tracking-widest active:scale-95"
               >
-                Reset Search Filters
+                Clear Filters
               </button>
             </div>
           )}
         </section>
       </main>
 
-      {/* Footer - Minimal Sapphire */}
-      <footer className="bg-black/40 border-t border-white/5 py-16 px-6 mt-20">
-        <div className="max-w-7xl mx-auto flex flex-col items-center gap-6">
-           <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-white text-black rounded-xl flex items-center justify-center font-black text-sm">P</div>
-              <span className="text-lg font-black tracking-tighter uppercase font-outfit">PLAYFREE</span>
+      {/* Footer */}
+      <footer className="bg-black/95 border-t border-white/5 py-32 px-10">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-start gap-16">
+           <div className="flex flex-col gap-5">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-white text-black rounded-2xl flex items-center justify-center font-black text-xl">P</div>
+                <span className="text-2xl font-black tracking-tighter uppercase font-outfit">PLAYFREE</span>
+              </div>
+              <p className="text-slate-600 text-base font-bold max-w-sm">
+                Next-generation archival preservation gateway for digital entertainment history.
+              </p>
            </div>
-           <div className="flex gap-10 text-[10px] font-black text-slate-500 uppercase tracking-widest">
-              <a href="#" className="hover:text-blue-400 transition-colors">Manifesto</a>
-              <a href="#" className="hover:text-blue-400 transition-colors">Encryption Protocols</a>
-              <a href="#" className="hover:text-blue-400 transition-colors">Status</a>
+           <div className="grid grid-cols-2 gap-20 text-[11px] font-black text-slate-500 uppercase tracking-widest">
+              <div className="flex flex-col gap-5">
+                <p className="text-white text-xs mb-1 font-outfit">Security</p>
+                <a href="#" className="hover:text-blue-500">Encryption</a>
+                <a href="#" className="hover:text-blue-500">Verification</a>
+                <a href="#" className="hover:text-blue-500">Uptime</a>
+              </div>
+              <div className="flex flex-col gap-5">
+                <p className="text-white text-xs mb-1 font-outfit">Legal</p>
+                <a href="#" className="hover:text-blue-500">Privacy</a>
+                <a href="#" className="hover:text-blue-500">Manifesto</a>
+                <a href="#" className="hover:text-blue-500">DMCA</a>
+              </div>
            </div>
-           <p className="text-[9px] text-slate-700 font-black uppercase tracking-[0.5em] mt-4">
-             NON-COMMERCIAL RESEARCH DISTRIBUTION NODE • EST. 2024
+        </div>
+        <div className="mt-32 pt-10 border-t border-white/5 text-center">
+           <p className="text-[10px] text-slate-800 font-black uppercase tracking-[1em]">
+             PLAYFREE VAULT • 2024
            </p>
         </div>
       </footer>
