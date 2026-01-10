@@ -34,8 +34,23 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ games, initialGame, onUpdateGam
   const [isLoadingUsers, setIsLoadingUsers] = useState(false);
   const [languageInput, setLanguageInput] = useState('');
 
-  const sqlSchema = `-- RUN THIS IN YOUR SUPABASE SQL EDITOR TO FIX SCHEMA ERRORS
--- 1. GAMES TABLE
+  const sqlSchema = `-- RUN THIS TO FIX FOREIGN KEY UUID/TEXT MISMATCH
+-- This script ensures all tables use compatible UUID types.
+
+-- 1. DROP EXISTING CONSTRAINTS IF NECESSARY
+ALTER TABLE IF EXISTS user_library DROP CONSTRAINT IF EXISTS user_library_game_id_fkey;
+ALTER TABLE IF EXISTS reports DROP CONSTRAINT IF EXISTS reports_game_id_fkey;
+
+-- 2. ENSURE GAMES TABLE USES UUID
+-- If games.id is currently TEXT, we need to convert it.
+-- Note: This is a robust way to ensure the type is correct.
+DO $$ 
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'games' AND column_name = 'id' AND data_type = 'text') THEN
+        ALTER TABLE games ALTER COLUMN id TYPE UUID USING id::uuid;
+    END IF;
+END $$;
+
 CREATE TABLE IF NOT EXISTS games (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   title TEXT NOT NULL,
@@ -51,11 +66,11 @@ CREATE TABLE IF NOT EXISTS games (
   updates JSONB DEFAULT '[]'
 );
 
--- ADD MISSING COLUMNS IF TABLE ALREADY EXISTS
+-- ADD MISSING COLUMNS
 ALTER TABLE games ADD COLUMN IF NOT EXISTS languages JSONB DEFAULT '[]';
 ALTER TABLE games ADD COLUMN IF NOT EXISTS updates JSONB DEFAULT '[]';
 
--- 2. PROFILES TABLE
+-- 3. PROFILES TABLE
 CREATE TABLE IF NOT EXISTS profiles (
   id UUID REFERENCES auth.users ON DELETE CASCADE PRIMARY KEY,
   username TEXT,
@@ -63,24 +78,28 @@ CREATE TABLE IF NOT EXISTS profiles (
   is_admin BOOLEAN DEFAULT false
 );
 
--- 3. USER LIBRARY
+-- 4. USER LIBRARY (ENSURE game_id IS UUID)
 CREATE TABLE IF NOT EXISTS user_library (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id UUID REFERENCES auth.users ON DELETE CASCADE,
-  game_id UUID REFERENCES games ON DELETE CASCADE,
+  game_id UUID REFERENCES games(id) ON DELETE CASCADE,
   UNIQUE(user_id, game_id)
 );
 
--- 4. REPORTS
+-- 5. REPORTS (ENSURE game_id IS UUID)
 CREATE TABLE IF NOT EXISTS reports (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  game_id UUID REFERENCES games ON DELETE CASCADE,
+  game_id UUID REFERENCES games(id) ON DELETE CASCADE,
   user_id UUID REFERENCES auth.users,
   status TEXT DEFAULT 'pending',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
--- TRIGGER FOR NEW USERS (IF NOT ALREADY SET)
+-- RE-APPLY CONSTRAINTS (FOR SAFETY)
+ALTER TABLE user_library ADD CONSTRAINT user_library_game_id_fkey FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE;
+ALTER TABLE reports ADD CONSTRAINT reports_game_id_fkey FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE;
+
+-- 6. TRIGGER FOR NEW USERS
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger AS $$
 BEGIN
@@ -211,7 +230,7 @@ CREATE TRIGGER on_auth_user_created
       setEditingGame(null);
       setLanguageInput('');
     } catch (err: any) {
-      showToast('error', 'Write Error', "Please ensure you have run the SQL setup in the 'System Setup' tab.");
+      showToast('error', 'Write Error', "Please ensure you have run the FIXED SQL setup in the 'System Setup' tab.");
     } finally {
       setIsSaving(false);
     }
@@ -504,7 +523,7 @@ CREATE TRIGGER on_auth_user_created
                   </div>
                   <div className="bg-amber-900/20 border border-amber-500/30 rounded-xl p-4 mb-6">
                     <p className="text-[10px] font-black text-amber-400 uppercase tracking-widest leading-relaxed">
-                      ⚠️ CRITICAL: To fix "languages column not found", copy this code and run it in your Supabase SQL Editor.
+                      ⚠️ CRITICAL: Run this code in your Supabase SQL Editor to resolve the UUID mismatch error.
                     </p>
                   </div>
                   <pre className="bg-black/50 p-6 rounded-2xl overflow-x-auto text-[11px] font-mono text-slate-300 leading-relaxed border border-white/5">

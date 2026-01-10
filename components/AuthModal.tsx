@@ -84,28 +84,28 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }) => {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[150] flex items-center justify-center p-4 animate-fade">
-      <div className="glass-panel rounded-[3rem] w-full max-w-md overflow-hidden shadow-2xl relative animate-modal border border-white/10">
+    <div className="fixed inset-0 bg-white/60 backdrop-blur-md z-[150] flex items-center justify-center p-4 animate-fade">
+      <div className="bg-white rounded-[3rem] w-full max-w-md overflow-hidden shadow-[0_40px_100px_-20px_rgba(0,114,206,0.1)] relative animate-modal border border-slate-100">
         <button 
           onClick={onClose} 
-          className="absolute top-8 right-8 p-2 hover:bg-white/10 rounded-full transition-all z-20 text-slate-400 hover:text-white"
+          className="absolute top-8 right-8 p-2 hover:bg-slate-50 rounded-full transition-all z-20 text-slate-400 hover:text-[#0072ce]"
         >
           <X className="w-5 h-5" />
         </button>
 
         {verificationSent ? (
           <div className="p-16 text-center animate-modal">
-            <div className="w-24 h-24 bg-blue-600/20 text-blue-400 rounded-[2rem] flex items-center justify-center mx-auto mb-8 border border-blue-400/20">
+            <div className="w-24 h-24 bg-[#0072ce]/10 text-[#0072ce] rounded-[2rem] flex items-center justify-center mx-auto mb-8 border border-[#0072ce]/10">
               <Send className="w-10 h-10" />
             </div>
-            <h3 className="text-2xl font-black text-white font-outfit mb-4 uppercase tracking-tighter">Transmission Sent</h3>
-            <p className="text-slate-400 text-sm font-medium mb-10 leading-relaxed">
+            <h3 className="text-2xl font-black text-slate-900 font-outfit mb-4 uppercase tracking-tighter">Transmission Sent</h3>
+            <p className="text-slate-500 text-sm font-medium mb-10 leading-relaxed">
               An encrypted verification sequence has been dispatched to <br/>
-              <span className="text-blue-400 font-bold">{email}</span>
+              <span className="text-[#0072ce] font-bold">{email}</span>
             </p>
             <button 
               onClick={() => setVerificationSent(false)}
-              className="w-full bg-white text-black font-black py-5 rounded-2xl hover:bg-blue-400 hover:text-white transition-all shadow-xl active:scale-95 text-xs tracking-widest uppercase"
+              className="w-full bg-[#0072ce] text-white font-black py-5 rounded-2xl hover:bg-[#005bb8] transition-all shadow-xl active:scale-95 text-xs tracking-widest uppercase"
             >
               Return to Gateway
             </button>
@@ -113,13 +113,13 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }) => {
         ) : (
           <>
             <div className="p-12 pb-8 text-center">
-              <div className="w-16 h-16 bg-blue-600 rounded-3xl mx-auto flex items-center justify-center mb-6 shadow-2xl shadow-blue-500/20">
+              <div className="w-16 h-16 bg-[#0072ce] rounded-3xl mx-auto flex items-center justify-center mb-6 shadow-2xl shadow-blue-500/20">
                 <Fingerprint className="text-white w-8 h-8" />
               </div>
-              <h2 className="text-3xl font-black text-white font-outfit uppercase tracking-tighter mb-2">
+              <h2 className="text-3xl font-black text-[#0072ce] font-outfit uppercase tracking-tighter mb-2">
                 {isLogin ? 'Access Point' : 'Initialize Node'}
               </h2>
-              <p className="text-slate-500 text-[10px] uppercase font-black tracking-[0.4em]">Secure Gateway Verification</p>
+              <p className="text-slate-400 text-[10px] uppercase font-black tracking-[0.4em]">Secure Gateway Verification</p>
             </div>
 
             <div className="p-12 pt-0">
@@ -128,8 +128,10 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }) => {
                   <div className="space-y-2">
                     <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest ml-1">Identity ID</label>
                     <input 
-                      type="text" required value={username} onChange={e => setUsername(e.target.value)}
-                      className="w-full px-6 py-4 bg-black/40 border border-white/10 rounded-2xl focus:bg-black/60 focus:border-blue-500 outline-none text-white font-bold text-sm placeholder:text-slate-800 transition-all"
+                      type="text" required value={username} 
+                      // Fix: Corrected onChange to use an arrow function with event parameter 'e'
+                      onChange={e => setUsername(e.target.value)}
+                      className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:bg-white focus:border-[#0072ce] outline-none text-slate-900 font-bold text-sm placeholder:text-slate-300 transition-all"
                       placeholder="PLAYER_ALPHA"
                     />
                   </div>
@@ -139,7 +141,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }) => {
                   <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest ml-1">Digital Mailbox</label>
                   <input 
                     type="email" required value={email} onChange={e => setEmail(e.target.value)}
-                    className="w-full px-6 py-4 bg-black/40 border border-white/10 rounded-2xl focus:bg-black/60 focus:border-blue-500 outline-none text-white font-bold text-sm placeholder:text-slate-800 transition-all"
+                    className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:bg-white focus:border-[#0072ce] outline-none text-slate-900 font-bold text-sm placeholder:text-slate-300 transition-all"
                     placeholder="CLIENT@NETWORK.COM"
                   />
                 </div>
@@ -148,14 +150,14 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }) => {
                   <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest ml-1">Secret Key</label>
                   <input 
                     type="password" required value={password} onChange={e => setPassword(e.target.value)}
-                    className="w-full px-6 py-4 bg-black/40 border border-white/10 rounded-2xl focus:bg-black/60 focus:border-blue-500 outline-none text-white font-bold text-sm placeholder:text-slate-800 transition-all"
+                    className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:bg-white focus:border-[#0072ce] outline-none text-slate-900 font-bold text-sm placeholder:text-slate-300 transition-all"
                     placeholder="••••••••"
                   />
                 </div>
 
                 <button 
                   type="submit" disabled={loading}
-                  className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-5 rounded-[2rem] mt-4 transition-all active:scale-95 disabled:opacity-50 flex justify-center items-center gap-3 shadow-2xl shadow-blue-500/20 text-xs tracking-widest uppercase"
+                  className="w-full bg-[#0072ce] hover:bg-[#005bb8] text-white font-black py-5 rounded-[2rem] mt-4 transition-all active:scale-95 disabled:opacity-50 flex justify-center items-center gap-3 shadow-2xl shadow-blue-500/10 text-xs tracking-widest uppercase"
                 >
                   {loading ? <PulseSpinner /> : (isLogin ? <LogIn className="w-5 h-5" /> : <UserPlus className="w-5 h-5" />)}
                   <span>{isLogin ? 'Grant Access' : 'Create Profile'}</span>
@@ -165,16 +167,16 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }) => {
               <div className="mt-10 text-center space-y-8">
                 <button 
                   onClick={() => setIsLogin(!isLogin)}
-                  className="text-[10px] text-blue-400 font-black uppercase tracking-widest hover:text-white transition-colors"
+                  className="text-[10px] text-[#0072ce] font-black uppercase tracking-widest hover:text-slate-900 transition-colors"
                 >
                   {isLogin ? "No Access? Build Private Identity" : "Member Found? Access Point"}
                 </button>
                 
                 <div className="flex flex-col items-center gap-3">
-                   <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/5 border border-white/5">
-                      <div className={`w-1.5 h-1.5 rounded-full ${connectionStatus === 'online' ? 'bg-blue-400 animate-pulse' : 'bg-red-400'}`} />
-                      <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">
-                        {connectionStatus === 'online' ? 'Network Online' : 'Signal Lost'}
+                   <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-slate-50 border border-slate-200">
+                      <div className={`w-1.5 h-1.5 rounded-full ${connectionStatus === 'online' ? 'bg-[#0072ce] animate-pulse' : 'bg-red-400'}`} />
+                      <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">
+                        {connectionStatus === 'online' ? 'System Online' : 'Sync Failed'}
                       </span>
                    </div>
                 </div>

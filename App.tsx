@@ -146,7 +146,7 @@ const AppContent: React.FC = () => {
   }, [games, searchQuery, filterPlatform, viewMode, libraryIds]);
 
   return (
-    <div className="min-h-screen flex flex-col text-white">
+    <div className="min-h-screen flex flex-col bg-white text-slate-900">
       <Navbar 
         user={user} reportCount={reportCount}
         onAuthClick={() => setShowAuthModal(true)} 
@@ -157,37 +157,37 @@ const AppContent: React.FC = () => {
       />
 
       <main className="flex-grow pt-32 pb-32 px-6 max-w-[1500px] mx-auto w-full">
-        {/* Elite Header */}
+        {/* Cinematic White Header */}
         <div className="mb-16 animate-fade">
            <div className="flex items-center gap-3 mb-4">
-              <Sparkles className="w-5 h-5 text-blue-500" />
-              <span className="text-[11px] font-black uppercase tracking-[0.4em] text-blue-500">Live Server Status: Optimal</span>
+              <Sparkles className="w-5 h-5 text-[#0072ce]" />
+              <span className="text-[11px] font-black uppercase tracking-[0.4em] text-[#0072ce]">Official Archival Sector</span>
            </div>
-           <h1 className="text-5xl md:text-7xl font-black font-outfit uppercase tracking-tighter mb-4 leading-[0.9]">
-             The Ultimate <br/><span className="text-blue-600">Archival</span> Vault
+           <h1 className="text-5xl md:text-7xl font-black font-outfit uppercase tracking-tighter mb-4 leading-[0.9] text-[#0072ce]">
+             The Horizon <br/><span className="text-slate-900">Gaming</span> Legacy
            </h1>
-           <p className="max-w-2xl text-slate-400 font-medium text-lg leading-relaxed">
-             Access the world's most complete digital repository for PlayStation 4 & 5. High-fidelity verification. Zero fees.
+           <p className="max-w-2xl text-slate-500 font-medium text-lg leading-relaxed">
+             The premier digital preservation gateway. Access verified high-fidelity archives for PlayStation 4 & 5. Experience the evolution of gaming.
            </p>
         </div>
 
-        {/* Pro Filter Bar */}
-        <div className="mb-16 glass-panel p-3 rounded-[3rem] flex flex-col lg:flex-row items-center justify-between gap-6 shadow-2xl">
-          <div className="flex items-center gap-2 p-1 bg-black/40 rounded-full border border-white/5 w-full lg:w-auto">
+        {/* Pro Filter Bar (Light) */}
+        <div className="mb-16 glass-panel p-3 rounded-[3rem] flex flex-col lg:flex-row items-center justify-between gap-6 shadow-xl border border-slate-200">
+          <div className="flex items-center gap-2 p-1 bg-slate-100 rounded-full w-full lg:w-auto">
              {['All', 'PS5', 'PS4'].map(p => (
                <button
                  key={p} onClick={() => setFilterPlatform(p as any)}
-                 className={`flex-grow lg:flex-none px-10 py-3.5 rounded-full text-[11px] font-black uppercase tracking-widest transition-all ${filterPlatform === p ? 'bg-white text-black shadow-2xl' : 'text-slate-500 hover:text-white'}`}
+                 className={`flex-grow lg:flex-none px-10 py-3.5 rounded-full text-[11px] font-black uppercase tracking-widest transition-all ${filterPlatform === p ? 'bg-white text-[#0072ce] shadow-md' : 'text-slate-400 hover:text-slate-600'}`}
                >{p}</button>
              ))}
           </div>
 
           <div className="relative w-full lg:w-[450px]">
-             <Search className="absolute left-7 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-700" />
+             <Search className="absolute left-7 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
              <input 
-               type="text" placeholder="QUERY MASTER DATABASE..."
+               type="text" placeholder="SEARCH THE CATALOG..."
                value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-               className="w-full pl-16 pr-8 py-5 rounded-full bg-black/40 border border-white/5 focus:border-blue-500/40 outline-none font-bold text-xs tracking-widest text-white placeholder:text-slate-800 transition-all uppercase"
+               className="w-full pl-16 pr-8 py-5 rounded-full bg-slate-100 border border-transparent focus:border-[#0072ce]/20 focus:bg-white outline-none font-bold text-xs tracking-widest text-slate-900 placeholder:text-slate-400 transition-all uppercase"
              />
           </div>
         </div>
@@ -213,50 +213,50 @@ const AppContent: React.FC = () => {
               ))}
             </div>
           ) : (
-            <div className="py-40 text-center glass-panel rounded-[4rem] border border-white/5 animate-fade">
-              <Gamepad2 className="w-20 h-20 text-slate-900 mx-auto mb-8" />
-              <h3 className="text-3xl font-black font-outfit uppercase text-white mb-3 tracking-tighter">Null Result</h3>
-              <p className="text-slate-500 text-lg font-medium mb-12">No matching archival signatures found in this sector.</p>
+            <div className="py-40 text-center glass-panel rounded-[4rem] border border-slate-100 animate-fade">
+              <Gamepad2 className="w-20 h-20 text-slate-100 mx-auto mb-8" />
+              <h3 className="text-3xl font-black font-outfit uppercase text-[#0072ce] mb-3 tracking-tighter">Null Result</h3>
+              <p className="text-slate-400 text-lg font-medium mb-12">No matching archival signatures found in this sector.</p>
               <button 
                 onClick={() => {setSearchQuery(''); setFilterPlatform('All'); setViewMode('store');}}
-                className="px-12 py-5 btn-primary text-black rounded-full text-[12px] font-black uppercase tracking-widest active:scale-95"
+                className="px-12 py-5 btn-primary rounded-full text-[12px] font-black uppercase tracking-widest active:scale-95"
               >
-                Clear Filters
+                Reset Sector
               </button>
             </div>
           )}
         </section>
       </main>
 
-      {/* Footer */}
-      <footer className="bg-black/95 border-t border-white/5 py-32 px-10">
+      {/* Light Footer */}
+      <footer className="bg-slate-50 border-t border-slate-100 py-32 px-10">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-start gap-16">
            <div className="flex flex-col gap-5">
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-white text-black rounded-2xl flex items-center justify-center font-black text-xl">P</div>
-                <span className="text-2xl font-black tracking-tighter uppercase font-outfit">PLAYFREE</span>
+                <div className="w-12 h-12 bg-[#0072ce] text-white rounded-2xl flex items-center justify-center font-black text-xl">P</div>
+                <span className="text-2xl font-black tracking-tighter uppercase font-outfit text-[#0072ce]">PLAYFREE</span>
               </div>
-              <p className="text-slate-600 text-base font-bold max-w-sm">
-                Next-generation archival preservation gateway for digital entertainment history.
+              <p className="text-slate-500 text-base font-bold max-w-sm">
+                Next-generation archival preservation gateway for digital entertainment history. Official PlayStation Repository.
               </p>
            </div>
-           <div className="grid grid-cols-2 gap-20 text-[11px] font-black text-slate-500 uppercase tracking-widest">
+           <div className="grid grid-cols-2 gap-20 text-[11px] font-black text-slate-400 uppercase tracking-widest">
               <div className="flex flex-col gap-5">
-                <p className="text-white text-xs mb-1 font-outfit">Security</p>
-                <a href="#" className="hover:text-blue-500">Encryption</a>
-                <a href="#" className="hover:text-blue-500">Verification</a>
-                <a href="#" className="hover:text-blue-500">Uptime</a>
+                <p className="text-slate-900 text-xs mb-1 font-outfit">Security</p>
+                <a href="#" className="hover:text-[#0072ce]">Encryption</a>
+                <a href="#" className="hover:text-[#0072ce]">Verification</a>
+                <a href="#" className="hover:text-[#0072ce]">Uptime</a>
               </div>
               <div className="flex flex-col gap-5">
-                <p className="text-white text-xs mb-1 font-outfit">Legal</p>
-                <a href="#" className="hover:text-blue-500">Privacy</a>
-                <a href="#" className="hover:text-blue-500">Manifesto</a>
-                <a href="#" className="hover:text-blue-500">DMCA</a>
+                <p className="text-slate-900 text-xs mb-1 font-outfit">Legal</p>
+                <a href="#" className="hover:text-[#0072ce]">Privacy</a>
+                <a href="#" className="hover:text-[#0072ce]">Manifesto</a>
+                <a href="#" className="hover:text-[#0072ce]">DMCA</a>
               </div>
            </div>
         </div>
-        <div className="mt-32 pt-10 border-t border-white/5 text-center">
-           <p className="text-[10px] text-slate-800 font-black uppercase tracking-[1em]">
+        <div className="mt-32 pt-10 border-t border-slate-200 text-center">
+           <p className="text-[10px] text-slate-300 font-black uppercase tracking-[1em]">
              PLAYFREE VAULT • 2024
            </p>
         </div>

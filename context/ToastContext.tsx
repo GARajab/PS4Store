@@ -51,20 +51,15 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            className={`pointer-events-auto flex items-center gap-4 p-5 glass-panel rounded-[2rem] shadow-2xl border border-white/10 ${
+            className={`pointer-events-auto flex items-center gap-4 p-5 bg-white rounded-[2rem] shadow-2xl border border-slate-100 ${
               toast.isExiting ? 'animate-toast-out' : 'animate-toast-in'
-            } ${
-              toast.type === 'success' ? 'shadow-emerald-500/10' :
-              toast.type === 'error' ? 'shadow-red-500/10' :
-              toast.type === 'warning' ? 'shadow-amber-500/10' :
-              'shadow-blue-500/10'
             }`}
           >
             <div className={`w-10 h-10 rounded-2xl shrink-0 flex items-center justify-center ${
-              toast.type === 'success' ? 'bg-emerald-500/10 text-emerald-400' :
-              toast.type === 'error' ? 'bg-red-500/10 text-red-400' :
-              toast.type === 'warning' ? 'bg-amber-500/10 text-amber-400' :
-              'bg-blue-500/10 text-blue-400'
+              toast.type === 'success' ? 'bg-emerald-50 text-emerald-500' :
+              toast.type === 'error' ? 'bg-red-50 text-red-500' :
+              toast.type === 'warning' ? 'bg-amber-50 text-amber-500' :
+              'bg-[#0072ce]/10 text-[#0072ce]'
             }`}>
               {toast.type === 'success' && <ShieldCheck className="w-5 h-5" />}
               {toast.type === 'error' && <AlertCircle className="w-5 h-5" />}
@@ -73,17 +68,19 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             </div>
             
             <div className="flex-grow">
-              <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-white font-outfit leading-none mb-1.5">
+              <h4 className={`text-[10px] font-black uppercase tracking-[0.2em] font-outfit leading-none mb-1.5 ${
+                toast.type === 'info' ? 'text-[#0072ce]' : 'text-slate-900'
+              }`}>
                 {toast.title}
               </h4>
-              <p className="text-[11px] font-bold text-slate-400 leading-tight">
+              <p className="text-[11px] font-bold text-slate-500 leading-tight">
                 {toast.message}
               </p>
             </div>
 
             <button 
               onClick={() => removeToast(toast.id)}
-              className="text-slate-600 hover:text-white transition-colors shrink-0 p-1"
+              className="text-slate-300 hover:text-slate-900 transition-colors shrink-0 p-1"
             >
               <X className="w-4 h-4" />
             </button>
