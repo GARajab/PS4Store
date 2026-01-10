@@ -239,7 +239,7 @@ CREATE TRIGGER on_auth_user_created
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[150] flex items-center justify-center p-4 animate-fade-in">
-      <div className="bg-white rounded-[2rem] w-full max-w-6xl h-[85vh] overflow-hidden shadow-2xl flex border border-slate-200 animate-modal-zoom">
+      <div className="bg-white rounded-[2rem] w-full max-w-6xl h-[85vh] overflow-hidden shadow-2xl flex border border-slate-200 animate-modal-zoom text-slate-900">
         
         {/* Sidebar Dashboard Navigation */}
         <aside className="w-64 bg-slate-50 border-r border-slate-200 flex flex-col p-6">
@@ -332,7 +332,7 @@ CREATE TRIGGER on_auth_user_created
                     <input 
                       type="text" value={editingGame.title || ''} 
                       onChange={e => setEditingGame({ ...editingGame, title: e.target.value })} 
-                      className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm focus:bg-white focus:ring-4 focus:ring-blue-500/5 transition-all outline-none" 
+                      className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm text-slate-900 focus:bg-white focus:ring-4 focus:ring-blue-500/5 transition-all outline-none" 
                       placeholder="e.g. God of War Ragnarök"
                     />
                   </div>
@@ -341,7 +341,7 @@ CREATE TRIGGER on_auth_user_created
                     <select 
                       value={editingGame.platform || 'PS4'} 
                       onChange={e => setEditingGame({ ...editingGame, platform: e.target.value as Platform })} 
-                      className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm focus:bg-white transition-all outline-none"
+                      className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm text-slate-900 focus:bg-white transition-all outline-none"
                     >
                       <option value="PS4">PlayStation 4</option>
                       <option value="PS5">PlayStation 5</option>
@@ -362,7 +362,7 @@ CREATE TRIGGER on_auth_user_created
                     <textarea 
                       value={editingGame.description || ''} 
                       onChange={e => setEditingGame({ ...editingGame, description: e.target.value })} 
-                      className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl h-32 font-medium text-sm focus:bg-white transition-all outline-none" 
+                      className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl h-32 font-medium text-sm text-slate-900 focus:bg-white transition-all outline-none" 
                       placeholder="Enter a captivating description for this title..."
                     />
                   </div>
@@ -373,7 +373,7 @@ CREATE TRIGGER on_auth_user_created
                     <input 
                       type="text" value={languageInput} 
                       onChange={e => setLanguageInput(e.target.value)} 
-                      className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm outline-none focus:bg-white transition-all" 
+                      className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm text-slate-900 outline-none focus:bg-white transition-all" 
                       placeholder="e.g. English, Spanish, French, Japanese"
                     />
                     <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider ml-1 italic">Separate languages with commas</p>
@@ -383,7 +383,7 @@ CREATE TRIGGER on_auth_user_created
                     <input 
                       type="text" value={editingGame.imageUrl || ''} 
                       onChange={e => setEditingGame({ ...editingGame, imageUrl: e.target.value })} 
-                      className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm outline-none" 
+                      className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm text-slate-900 outline-none" 
                       placeholder="https://..."
                     />
                   </div>
@@ -392,7 +392,7 @@ CREATE TRIGGER on_auth_user_created
                     <input 
                       type="text" value={editingGame.downloadUrl || ''} 
                       onChange={e => setEditingGame({ ...editingGame, downloadUrl: e.target.value })} 
-                      className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm outline-none"
+                      className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm text-slate-900 outline-none"
                       placeholder="https://secure-node..."
                     />
                   </div>
@@ -403,7 +403,7 @@ CREATE TRIGGER on_auth_user_created
                     <input 
                       type="text" value={editingGame.trailerUrl || ''} 
                       onChange={e => setEditingGame({ ...editingGame, trailerUrl: e.target.value })} 
-                      className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm outline-none focus:bg-white transition-all"
+                      className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm text-slate-900 outline-none focus:bg-white transition-all"
                       placeholder="e.g. https://www.youtube.com/watch?v=dQw4w9WgXcQ"
                     />
                   </div>
@@ -552,9 +552,9 @@ CREATE TRIGGER on_auth_user_created
                 )}
               </div>
             ) : (
-              <div className="p-12 text-center">
+              <div className="p-12 text-center text-slate-400">
                 <LayoutDashboard className="w-12 h-12 text-slate-200 mx-auto mb-4" />
-                <p className="text-slate-400 font-bold text-sm">System logs will be available in V3.2.0</p>
+                <p className="font-bold text-sm">System logs will be available in V3.2.0</p>
               </div>
             )}
             
