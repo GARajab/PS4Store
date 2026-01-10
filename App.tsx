@@ -8,7 +8,7 @@ import AuthModal from './components/AuthModal';
 import AdminPanel from './components/AdminPanel';
 import TrailerModal from './components/TrailerModal';
 import { SkeletonCard } from './components/LoadingSpinner';
-import { Search, Gamepad2, LayoutGrid, Library, TrendingUp, Sparkles, RefreshCw, Database, Activity, WifiOff } from 'lucide-react';
+import { Search, Sparkles, Database, Activity, WifiOff, RefreshCw } from 'lucide-react';
 import { ToastProvider, useToast } from './context/ToastContext';
 
 const AppContent: React.FC = () => {
@@ -28,9 +28,9 @@ const AppContent: React.FC = () => {
   const [libraryIds, setLibraryIds] = useState<string[]>([]);
   const [activeTrailer, setActiveTrailer] = useState<Game | null>(null);
 
-  const isInitializing = useRef(false);
-  const lastRequestTime = useRef(0);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const initLock = useRef(false);
+  const fetchLock = useRef(false);
+  const abortRetryCount = useRef(0);
 
   const getFullUser = async (sbUser: any): Promise<User> => {
     try {
@@ -57,9 +57,8 @@ const AppContent: React.FC = () => {
   };
 
   const fetchGames = useCallback(async () => {
-    const now = Date.now();
-    if (now - lastRequestTime.current < 500) return;
-    lastRequestTime.current = now;
+    if (fetchLock.current) return;
+    fetchLock.current = true;
 
     try {
       const { data, error } = await supabase
@@ -69,44 +68,46 @@ const AppContent: React.FC = () => {
 
       if (error) {
         if (error.code === '42P01' || error.message?.includes('does not exist')) {
-          console.warn("Games table not found. App running in empty state.");
           setGames([]);
         } else {
           throw error;
         }
       } else {
         setGames(data || []);
+        setFetchError(null);
       }
-      setFetchError(null);
     } catch (err: any) {
-      if (err.name === 'AbortError') return;
-      console.error("Fetch Failure:", err);
-      setFetchError(err.message || "Archive synchronization interrupted.");
+      const isAbort = err.name === 'AbortError' || err.message?.includes('aborted');
+      if (isAbort) {
+        console.debug("[Sync] Supabase signal aborted. Retrying connection...");
+        if (abortRetryCount.current < 3) {
+          abortRetryCount.current++;
+          setTimeout(() => { fetchLock.current = false; fetchGames(); }, 500);
+        }
+        return;
+      }
+      console.error("[Sync] Critical connection failure:", err);
+      setFetchError(err.message || "Archive handshake interrupted.");
     } finally {
       setIsLoading(false);
+      fetchLock.current = false;
     }
   }, []);
 
   const initializeApp = useCallback(async () => {
-    if (isInitializing.current) return;
-    isInitializing.current = true;
+    if (initLock.current) return;
+    initLock.current = true;
     
     setIsLoading(true);
-    setFetchError(null);
-
-    // EMERGENCY TIMEOUT: If network is silent for 10s, force resolve to show error
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    timeoutRef.current = setTimeout(() => {
-      if (isLoading && games.length === 0) {
-        setIsLoading(false);
-        setFetchError("Connection timed out. The production environment may be blocking requests.");
-        isInitializing.current = false;
-      }
-    }, 10000);
     
     try {
-      // 1. Session first
-      const { data: { session } } = await supabase.auth.getSession();
+      // 1. Session Recovery with silence for AbortErrors
+      const sessionResult = await supabase.auth.getSession().catch(err => {
+        if (err.name === 'AbortError' || err.message?.includes('aborted')) return { data: { session: null }, error: null };
+        throw err;
+      });
+      
+      const session = sessionResult?.data?.session;
       if (session?.user) {
         const fullUser = await getFullUser(session.user);
         setUser(fullUser);
@@ -114,24 +115,26 @@ const AppContent: React.FC = () => {
         if (libData) setLibraryIds(libData.map(item => item.game_id));
       }
 
-      // 2. Data load
+      // 2. Load Registry
       await fetchGames();
       
-      // 3. Reports
+      // 3. Supplemental metadata
       try {
         const { count } = await supabase.from('reports').select('*', { count: 'exact', head: true }).eq('status', 'pending');
         setReportCount(count || 0);
       } catch (e) {}
 
     } catch (err: any) {
-      console.error("Initialization error:", err);
-      setFetchError("Master connection failed. Verify project status.");
+      if (err.name === 'AbortError' || err.message?.includes('aborted')) {
+        initLock.current = false; // Allow retry
+        return;
+      }
+      console.error("[Init] System fault:", err);
+      setFetchError("Master gateway offline. Protocol reset required.");
     } finally {
       setIsLoading(false);
-      isInitializing.current = false;
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
     }
-  }, [fetchGames, games.length, isLoading]);
+  }, [fetchGames]);
 
   useEffect(() => {
     initializeApp();
@@ -151,10 +154,7 @@ const AppContent: React.FC = () => {
       }
     });
 
-    return () => {
-      subscription.unsubscribe();
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    };
+    return () => subscription.unsubscribe();
   }, [initializeApp]);
 
   const handleDownload = async (game: Game) => {
@@ -163,22 +163,24 @@ const AppContent: React.FC = () => {
       return;
     }
 
-    if (!libraryIds.includes(game.id)) {
-      const { error: libError } = await supabase
-        .from('user_library')
-        .insert([{ user_id: user.id, game_id: game.id }]);
-      
-      if (!libError) setLibraryIds(prev => [...prev, game.id]);
-    }
+    try {
+      if (!libraryIds.includes(game.id)) {
+        const { error: libError } = await supabase
+          .from('user_library')
+          .insert([{ user_id: user.id, game_id: game.id }]);
+        
+        if (!libError) setLibraryIds(prev => [...prev, game.id]);
+      }
 
-    const { error: countError } = await supabase
-      .from('games')
-      .update({ download_count: (game.download_count || 0) + 1 })
-      .eq('id', game.id);
+      const { error: countError } = await supabase
+        .from('games')
+        .update({ download_count: (game.download_count || 0) + 1 })
+        .eq('id', game.id);
 
-    if (!countError) {
-      setGames(prev => prev.map(g => g.id === game.id ? { ...g, download_count: (g.download_count || 0) + 1 } : g));
-    }
+      if (!countError) {
+        setGames(prev => prev.map(g => g.id === game.id ? { ...g, download_count: (g.download_count || 0) + 1 } : g));
+      }
+    } catch (e) {}
 
     window.open(game.downloadUrl, '_blank');
   };
@@ -188,12 +190,14 @@ const AppContent: React.FC = () => {
       setShowAuthModal(true);
       return false;
     }
-    const { error } = await supabase.from('reports').insert([{ game_id: game.id, user_id: user.id, status: 'pending' }]);
-    if (!error) { 
-      const { count } = await supabase.from('reports').select('*', { count: 'exact', head: true }).eq('status', 'pending');
-      setReportCount(count || 0);
-      return true; 
-    }
+    try {
+      const { error } = await supabase.from('reports').insert([{ game_id: game.id, user_id: user.id, status: 'pending' }]);
+      if (!error) { 
+        const { count } = await supabase.from('reports').select('*', { count: 'exact', head: true }).eq('status', 'pending');
+        setReportCount(count || 0);
+        return true; 
+      }
+    } catch (e) {}
     return false;
   };
 
@@ -246,13 +250,13 @@ const AppContent: React.FC = () => {
              <input 
                type="text" placeholder="SEARCH THE CATALOG..."
                value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-               className="w-full pl-16 pr-8 py-5 rounded-full bg-slate-100 border border-transparent focus:border-[#0072ce]/20 focus:bg-white outline-none font-bold text-xs tracking-widest text-slate-900 placeholder:text-slate-400 transition-all uppercase"
+               className="w-full pl-16 pr-8 py-5 rounded-full bg-slate-100 border border-transparent focus:border-[#0072ce]/20 focus:bg-white outline-none font-bold text-sm tracking-widest text-slate-900 placeholder:text-slate-400 transition-all uppercase"
              />
           </div>
         </div>
 
         <section className="min-h-[700px]">
-          {isLoading ? (
+          {isLoading && games.length === 0 ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-10">
               {[...Array(10)].map((_, i) => <SkeletonCard key={i} />)}
             </div>
@@ -262,10 +266,10 @@ const AppContent: React.FC = () => {
               <h3 className="text-3xl font-black font-outfit uppercase text-red-600 mb-3 tracking-tighter">Sync Interrupted</h3>
               <p className="text-slate-500 text-lg font-medium mb-12 max-w-md mx-auto">{fetchError}</p>
               <button 
-                onClick={initializeApp}
-                className="px-12 py-5 bg-[#0072ce] text-white rounded-full text-[12px] font-black uppercase tracking-widest active:scale-95 shadow-xl hover:bg-[#005bb8] transition-all"
+                onClick={() => { initLock.current = false; initializeApp(); }}
+                className="px-12 py-5 bg-[#0072ce] text-white rounded-full text-[12px] font-black uppercase tracking-widest active:scale-95 shadow-xl hover:bg-[#005bb8] transition-all flex items-center justify-center gap-3 mx-auto"
               >
-                Force Re-Sync
+                <RefreshCw className="w-4 h-4" /> Re-Sync Hub
               </button>
             </div>
           ) : filteredGames.length > 0 ? (
@@ -286,13 +290,13 @@ const AppContent: React.FC = () => {
             <div className="py-40 text-center glass-panel rounded-[4rem] border border-slate-100 animate-fade">
               <Database className="w-20 h-20 text-slate-100 mx-auto mb-8" />
               <h3 className="text-3xl font-black font-outfit uppercase text-[#0072ce] mb-3 tracking-tighter">Registry Empty</h3>
-              <p className="text-slate-400 text-lg font-medium mb-12">The master database contains no entries. Check your Supabase project.</p>
+              <p className="text-slate-400 text-lg font-medium mb-12">No active archival signatures found.</p>
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                 <button 
-                  onClick={initializeApp}
+                  onClick={() => { initLock.current = false; initializeApp(); }}
                   className="px-12 py-5 btn-primary rounded-full text-[12px] font-black uppercase tracking-widest active:scale-95"
                 >
-                  Refresh Archive
+                  Force Refresh
                 </button>
                 {(!user || user?.isAdmin) && (
                    <button 
@@ -316,13 +320,13 @@ const AppContent: React.FC = () => {
                 <span className="text-2xl font-black tracking-tighter uppercase font-outfit text-[#0072ce]">PLAYFREE</span>
               </div>
               <p className="text-slate-500 text-base font-bold max-w-sm">
-                Next-generation archival preservation gateway for digital entertainment history.
+                Archival preservation gateway for digital entertainment history.
               </p>
            </div>
            <div className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-full shadow-sm">
-             <Activity className={`w-3.5 h-3.5 ${fetchError ? 'text-red-500' : 'text-emerald-500'}`} />
+             <Activity className={`w-3.5 h-3.5 ${fetchError ? 'text-amber-500' : 'text-emerald-500'}`} />
              <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">
-               {fetchError ? 'Handshake Error' : 'Active Connection'}
+               {fetchError ? 'Limited Signal' : 'Secure Handshake'}
              </span>
            </div>
         </div>

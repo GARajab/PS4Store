@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { X, LogIn, UserPlus, Gamepad2, Send, Shield, Activity, Fingerprint, RefreshCcw } from 'lucide-react';
 import { User } from '../types';
 import { supabase } from '../lib/supabase';
@@ -21,29 +21,30 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }) => {
   const [loading, setLoading] = useState(false);
   const [verificationSent, setVerificationSent] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'checking' | 'online' | 'offline'>('checking');
+  const isMounted = useRef(true);
 
   const checkConnection = useCallback(async (isRetry = false) => {
+    if (!isMounted.current) return;
     setConnectionStatus('checking');
     try {
-      // Adding a small stagger for the auth check
-      await new Promise(r => setTimeout(r, 200));
+      await new Promise(r => setTimeout(r, 400));
       const { error } = await supabase.auth.getSession();
       if (error) throw error;
-      setConnectionStatus('online');
+      if (isMounted.current) setConnectionStatus('online');
     } catch (err: any) {
-      if (err.name === 'AbortError' && !isRetry) {
-        await new Promise(r => setTimeout(r, 800));
-        return checkConnection(true);
+      if (err.name === 'AbortError' || err.message?.includes('aborted')) {
+        return;
       }
-      console.error("Supabase connection check failed:", err);
-      setConnectionStatus('offline');
+      if (isMounted.current) setConnectionStatus('offline');
     }
   }, []);
 
   useEffect(() => {
+    isMounted.current = true;
     if (isOpen) {
       checkConnection();
     }
+    return () => { isMounted.current = false; };
   }, [isOpen, checkConnection]);
 
   if (!isOpen) return null;
@@ -51,7 +52,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (connectionStatus === 'offline') {
-      showToast('error', 'Connection Blocked', 'Unable to reach the authentication gateway.');
+      showToast('error', 'Gateway Offline', 'Check your connection to the PlayFree network.');
       return;
     }
     setLoading(true);
@@ -63,11 +64,11 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }) => {
         
         if (data.user) {
           if (!data.user.email_confirmed_at) {
-            showToast('warning', 'Link Expired or Unverified', 'Check your inbox for a fresh link.');
+            showToast('warning', 'Awaiting Verification', 'Please confirm your identity via the sent link.');
             await supabase.auth.signOut();
             return;
           }
-          showToast('success', 'Profile Verified', `Access granted to ${data.user.user_metadata?.username || 'Client'}.`);
+          showToast('success', 'Handshake Successful', `Welcome back, ${data.user.user_metadata?.username || 'Client'}.`);
           onClose();
         }
       } else {
@@ -84,17 +85,17 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }) => {
         if (data.user) {
           if (!data.session) {
             setVerificationSent(true);
-            showToast('info', 'Verification Sent', 'Email sent to encryption gateway.');
+            showToast('info', 'Encryption Key Sent', 'Verify your digital mailbox.');
           } else {
-            showToast('success', 'Node Created', 'Profile established on the network.');
+            showToast('success', 'Node Established', 'Identity verified on the mainnet.');
             onClose();
           }
         }
       }
     } catch (err: any) {
-      showToast('error', 'Auth Failed', err.message);
+      showToast('error', 'Auth Exception', err.message);
     } finally {
-      setLoading(false);
+      if (isMounted.current) setLoading(false);
     }
   };
 
@@ -174,7 +175,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }) => {
                   className="w-full bg-[#0072ce] hover:bg-[#005bb8] text-white font-black py-5 rounded-[2rem] mt-4 transition-all active:scale-95 disabled:opacity-50 flex justify-center items-center gap-3 shadow-2xl shadow-blue-500/10 text-xs tracking-widest uppercase"
                 >
                   {loading ? <PulseSpinner /> : (isLogin ? <LogIn className="w-5 h-5" /> : <UserPlus className="w-5 h-5" />)}
-                  <span>{isLogin ? 'Grant Access' : 'Create Profile'}</span>
+                  <span>{isLogin ? 'Authorize' : 'Register'}</span>
                 </button>
               </form>
 
@@ -183,7 +184,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }) => {
                   onClick={() => setIsLogin(!isLogin)}
                   className="text-[10px] text-[#0072ce] font-black uppercase tracking-widest hover:text-slate-900 transition-colors"
                 >
-                  {isLogin ? "No Access? Build Private Identity" : "Member Found? Access Point"}
+                  {isLogin ? "No Identity? Build Node" : "Member? Access Gateway"}
                 </button>
                 
                 <div className="flex flex-col items-center gap-3">
@@ -193,8 +194,8 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }) => {
                         connectionStatus === 'checking' ? 'bg-amber-400 animate-spin' : 'bg-red-400'
                       }`} />
                       <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">
-                        {connectionStatus === 'online' ? 'System Online' : 
-                         connectionStatus === 'checking' ? 'Synchronizing...' : 'Sync Failed'}
+                        {connectionStatus === 'online' ? 'Network Online' : 
+                         connectionStatus === 'checking' ? 'Verifying Link...' : 'Node Offline'}
                       </span>
                       {connectionStatus === 'offline' && (
                         <button 
