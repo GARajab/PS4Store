@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Game, User, Platform } from './types';
 import { supabase } from './lib/supabase';
 import GameCard from './components/GameCard';
@@ -7,7 +7,7 @@ import Navbar from './components/Navbar';
 import AuthModal from './components/AuthModal';
 import AdminPanel from './components/AdminPanel';
 import TrailerModal from './components/TrailerModal';
-import { SkeletonCard } from './components/LoadingSpinner';
+import { SkeletonCard, LogoSpinner } from './components/LoadingSpinner';
 import { Search, Sparkles, Database, Activity, WifiOff, RefreshCw } from 'lucide-react';
 import { ToastProvider, useToast } from './context/ToastContext';
 
@@ -20,162 +20,122 @@ const AppContent: React.FC = () => {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [editingGame, setEditingGame] = useState<Game | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isBooting, setIsBooting] = useState(true);
+  const [isLoadingGames, setIsLoadingGames] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [reportCount, setReportCount] = useState(0);
-  
   const [viewMode, setViewMode] = useState<'store' | 'library'>('store');
   const [libraryIds, setLibraryIds] = useState<string[]>([]);
   const [activeTrailer, setActiveTrailer] = useState<Game | null>(null);
 
-  const initialLoadCompleted = useRef(false);
-
   /**
-   * RECOVER USER PROFILE WITH FALLBACKS
+   * High-Precision User Data Sync
+   * Fetches profile and user library in a single pass
    */
-  const getFullUser = useCallback(async (sbUser: any): Promise<User> => {
+  const syncUserIdentity = useCallback(async (sbUser: any) => {
+    if (!sbUser) return;
     try {
-      // Try to get profile from the public.profiles table
-      const { data: profile, error } = await supabase
-        .from('profiles')
-        .select('is_admin, username')
-        .eq('id', sbUser.id)
-        .single();
+      // 1. Fetch Profile and Library concurrently
+      const [profileRes, libraryRes] = await Promise.all([
+        supabase.from('profiles').select('*').eq('id', sbUser.id).single(),
+        supabase.from('user_library').select('game_id').eq('user_id', sbUser.id)
+      ]);
 
-      if (error && error.code !== 'PGRST116') {
-        console.warn("[Auth] Profile fetch error:", error.message);
+      let profile = profileRes.data;
+
+      // 2. Self-Healing: Create profile if missing
+      if (!profile && profileRes.error?.code === 'PGRST116') {
+        const { data: newProfile } = await supabase.from('profiles').insert([{
+          id: sbUser.id,
+          username: sbUser.user_metadata?.username || sbUser.email?.split('@')[0],
+          email: sbUser.email,
+          is_admin: sbUser.email?.toLowerCase().includes('admin') || false
+        }]).select().single();
+        profile = newProfile;
       }
 
-      return {
+      // 3. Update Global Auth State
+      setUser({
         id: sbUser.id,
-        username: profile?.username || sbUser.user_metadata?.username || sbUser.email?.split('@')[0],
+        username: profile?.username || sbUser.user_metadata?.username || 'Unknown Player',
         email: sbUser.email || '',
-        isAdmin: profile?.is_admin || sbUser.email?.toLowerCase().includes('admin') || false,
-      };
+        isAdmin: profile?.is_admin || false,
+      });
+
+      // 4. Update Library State
+      if (libraryRes.data) {
+        setLibraryIds(libraryRes.data.map(item => item.game_id));
+      }
+
+      // 5. Admin Utilities
+      if (profile?.is_admin) {
+        const { count } = await supabase.from('reports').select('*', { count: 'exact', head: true }).eq('status', 'pending');
+        setReportCount(count || 0);
+      }
     } catch (e) {
-      return {
-        id: sbUser.id,
-        username: sbUser.user_metadata?.username || sbUser.email?.split('@')[0],
-        email: sbUser.email || '',
-        isAdmin: sbUser.email?.toLowerCase().includes('admin') || false,
-      };
+      console.error("[Auth] Sync identity failed:", e);
     }
   }, []);
 
-  /**
-   * SYNC USER DATA (LIBRARY)
-   */
-  const syncUserContext = useCallback(async (userId: string) => {
-    try {
-      const { data: libData, error } = await supabase
-        .from('user_library')
-        .select('game_id')
-        .eq('user_id', userId);
-      
-      if (error) throw error;
-
-      if (libData) {
-        setLibraryIds(libData.map(item => item.game_id));
-      }
-    } catch (e: any) {
-      console.warn("[Sync] User library sync failed:", e.message);
-    }
-  }, []);
-
-  /**
-   * FETCH CATALOG CONTENT
-   */
   const fetchGames = useCallback(async () => {
+    setIsLoadingGames(true);
     try {
-      const { data, error } = await supabase
-        .from('games')
-        .select('*')
-        .order('download_count', { ascending: false });
-
+      const { data, error } = await supabase.from('games').select('*').order('download_count', { ascending: false });
       if (error) {
-        if (error.code === '42P01') {
-          setFetchError("Database tables not found. Please run the SQL setup in Admin Panel.");
-          setGames([]);
-        } else {
-          throw error;
-        }
+        if (error.code === '42P01') setFetchError("System Error: Vault structure not found. Admin setup required.");
+        else throw error;
       } else {
         setGames(data || []);
         setFetchError(null);
       }
     } catch (err: any) {
-      if (err.name !== 'AbortError') {
-        setFetchError(err.message || "Cloud connection refused.");
-      }
+      setFetchError(err.message || "Archive link unstable.");
+    } finally {
+      setIsLoadingGames(false);
     }
   }, []);
 
   /**
-   * INITIALIZATION EFFECT
+   * CORE LIFECYCLE OBSERVER
    */
   useEffect(() => {
-    const initialize = async () => {
-      // 1. Check for current session immediately on mount
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (session?.user) {
-        const fullUser = await getFullUser(session.user);
-        setUser(fullUser);
-        await syncUserContext(fullUser.id);
-        
-        if (fullUser.isAdmin) {
-          const { count } = await supabase
-            .from('reports')
-            .select('*', { count: 'exact', head: true })
-            .eq('status', 'pending');
-          setReportCount(count || 0);
-        }
-      }
+    // 1. First fetch for initial catalog
+    fetchGames();
 
-      // 2. Fetch games regardless of user status
-      await fetchGames();
-      setIsLoading(false);
-      initialLoadCompleted.current = true;
-    };
-
-    initialize();
-
-    // 3. Set up auth listener for subsequent changes
+    // 2. Dedicated Auth Listener - Handles everything from boot to runtime changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log(`[AuthSystem] Event: ${event}`);
+      console.log(`[System] Auth Pulse: ${event}`);
       
       if (session?.user) {
-        const fullUser = await getFullUser(session.user);
-        setUser(fullUser);
-        await syncUserContext(fullUser.id);
-      } else if (event === 'SIGNED_OUT') {
+        await syncUserIdentity(session.user);
+      } else {
         setUser(null);
         setLibraryIds([]);
       }
+      
+      // Mark boot as complete once the first auth pulse is processed
+      setIsBooting(false);
     });
 
     return () => {
       subscription.unsubscribe();
     };
-  }, [fetchGames, getFullUser, syncUserContext]);
+  }, [fetchGames, syncUserIdentity]);
 
   const handleDownload = async (game: Game) => {
     if (!user) {
       setShowAuthModal(true);
       return;
     }
-
     try {
       if (!libraryIds.includes(game.id)) {
-        const { error: libError } = await supabase.from('user_library').insert([{ user_id: user.id, game_id: game.id }]);
-        if (libError) throw libError;
+        const { error } = await supabase.from('user_library').insert([{ user_id: user.id, game_id: game.id }]);
+        if (error) throw error;
         setLibraryIds(prev => [...prev, game.id]);
-        showToast('success', 'Library Updated', `${game.title} added to your collection.`);
+        showToast('success', 'Library Updated', `${game.title} archived to your node.`);
       }
-      
       await supabase.from('games').update({ download_count: (game.download_count || 0) + 1 }).eq('id', game.id);
       setGames(prev => prev.map(g => g.id === game.id ? { ...g, download_count: (g.download_count || 0) + 1 } : g));
-      
       window.open(game.downloadUrl, '_blank');
     } catch (e: any) {
       showToast('error', 'Sync Failed', e.message);
@@ -183,10 +143,7 @@ const AppContent: React.FC = () => {
   };
 
   const handleReport = async (game: Game): Promise<boolean> => {
-    if (!user) {
-      setShowAuthModal(true);
-      return false;
-    }
+    if (!user) { setShowAuthModal(true); return false; }
     try {
       const { error } = await supabase.from('reports').insert([{ game_id: game.id, user_id: user.id, status: 'pending' }]);
       if (!error) { 
@@ -207,16 +164,24 @@ const AppContent: React.FC = () => {
     });
   }, [games, searchQuery, filterPlatform, viewMode, libraryIds]);
 
+  // Professional Boot Screen
+  if (isBooting) {
+    return (
+      <div className="fixed inset-0 bg-white flex flex-col items-center justify-center z-[1000]">
+        <LogoSpinner />
+        <p className="mt-8 text-[10px] font-black uppercase tracking-[0.4em] text-slate-400 animate-pulse">Initializing Secure Protocol</p>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-white text-slate-900">
       <Navbar 
         user={user} reportCount={reportCount}
         onAuthClick={() => setShowAuthModal(true)} 
         onLogout={async () => { 
-          await supabase.auth.signOut(); 
-          setUser(null);
-          setLibraryIds([]);
-          showToast('info', 'Signed Out', 'Your session has been terminated.');
+          await supabase.auth.signOut();
+          showToast('info', 'Session Ended', 'Gateway connection terminated.');
         }}
         onAdminClick={() => { setEditingGame(null); setShowAdminPanel(true); }}
         onLibraryClick={() => setViewMode('library')}
@@ -227,13 +192,13 @@ const AppContent: React.FC = () => {
         <div className="mb-16 animate-fade">
            <div className="flex items-center gap-3 mb-4">
               <Sparkles className="w-5 h-5 text-[#0072ce]" />
-              <span className="text-[11px] font-black uppercase tracking-[0.4em] text-[#0072ce]">Official Archival Sector</span>
+              <span className="text-[11px] font-black uppercase tracking-[0.4em] text-[#0072ce]">The Horizon Collection</span>
            </div>
            <h1 className="text-5xl md:text-7xl font-black font-outfit uppercase tracking-tighter mb-4 leading-[0.9] text-[#0072ce]">
-             The Horizon <br/><span className="text-slate-900">Gaming</span> Legacy
+             Digital <br/><span className="text-slate-900">Archive</span>
            </h1>
-           <p className="max-w-2xl text-slate-500 font-medium text-lg leading-relaxed">
-             Verified digital preservation gateway for PlayStation 4 & 5. Experience archival excellence.
+           <p className="max-w-2xl text-slate-500 font-medium text-lg">
+             The premium repository for PlayStation legacy titles. Secure. Free. Forever.
            </p>
         </div>
 
@@ -250,7 +215,7 @@ const AppContent: React.FC = () => {
           <div className="relative w-full lg:w-[450px]">
              <Search className="absolute left-7 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
              <input 
-               type="text" placeholder="SEARCH THE CATALOG..."
+               type="text" placeholder="SEARCH CATALOG..."
                value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
                className="w-full pl-16 pr-8 py-5 rounded-full bg-slate-100 border border-transparent focus:border-[#0072ce]/20 focus:bg-white outline-none font-bold text-sm tracking-widest text-slate-900 placeholder:text-slate-400 transition-all uppercase"
              />
@@ -258,20 +223,17 @@ const AppContent: React.FC = () => {
         </div>
 
         <section className="min-h-[700px]">
-          {isLoading ? (
+          {isLoadingGames ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-10">
               {[...Array(10)].map((_, i) => <SkeletonCard key={i} />)}
             </div>
           ) : fetchError ? (
-            <div className="py-40 text-center glass-panel rounded-[4rem] border border-red-100 animate-fade bg-red-50/30">
+            <div className="py-40 text-center glass-panel rounded-[4rem] border border-red-100 bg-red-50/30">
               <WifiOff className="w-20 h-20 text-red-200 mx-auto mb-8" />
-              <h3 className="text-3xl font-black font-outfit uppercase text-red-600 mb-3 tracking-tighter">Gateway Idle</h3>
+              <h3 className="text-3xl font-black font-outfit uppercase text-red-600 mb-3 tracking-tighter">Connection Interrupted</h3>
               <p className="text-slate-500 text-lg font-medium mb-12 max-w-md mx-auto">{fetchError}</p>
-              <button 
-                onClick={() => { setIsLoading(true); fetchGames().finally(() => setIsLoading(false)); }}
-                className="px-12 py-5 bg-[#0072ce] text-white rounded-full text-[12px] font-black uppercase tracking-widest active:scale-95 shadow-xl hover:bg-[#005bb8] transition-all flex items-center justify-center gap-3 mx-auto"
-              >
-                <RefreshCw className="w-4 h-4" /> Reset Connection
+              <button onClick={fetchGames} className="px-12 py-5 bg-[#0072ce] text-white rounded-full text-[12px] font-black uppercase tracking-widest shadow-xl flex items-center justify-center gap-3 mx-auto">
+                <RefreshCw className="w-4 h-4" /> Reconnect
               </button>
             </div>
           ) : filteredGames.length > 0 ? (
@@ -289,26 +251,11 @@ const AppContent: React.FC = () => {
               ))}
             </div>
           ) : (
-            <div className="py-40 text-center glass-panel rounded-[4rem] border border-slate-100 animate-fade">
+            <div className="py-40 text-center glass-panel rounded-[4rem] border border-slate-100">
               <Database className="w-20 h-20 text-slate-100 mx-auto mb-8" />
-              <h3 className="text-3xl font-black font-outfit uppercase text-[#0072ce] mb-3 tracking-tighter">No Active Signals</h3>
-              <p className="text-slate-400 text-lg font-medium mb-12">The digital vault is currently empty or offline.</p>
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-                <button 
-                  onClick={() => { fetchGames(); }}
-                  className="px-12 py-5 btn-primary rounded-full text-[12px] font-black uppercase tracking-widest active:scale-95"
-                >
-                  Force Handshake
-                </button>
-                {(!user || user?.isAdmin) && (
-                   <button 
-                    onClick={() => { if (!user) setShowAuthModal(true); else setShowAdminPanel(true); }}
-                    className="px-12 py-5 bg-white border border-slate-200 text-slate-900 rounded-full text-[12px] font-black uppercase tracking-widest active:scale-95"
-                  >
-                    Setup Hub
-                  </button>
-                )}
-              </div>
+              <h3 className="text-3xl font-black font-outfit uppercase text-[#0072ce] mb-3 tracking-tighter">Vault Silent</h3>
+              <p className="text-slate-400 text-lg font-medium mb-12">No titles found for your search parameters.</p>
+              <button onClick={() => { setSearchQuery(''); setFilterPlatform('All'); }} className="px-12 py-5 btn-primary rounded-full text-[12px] font-black uppercase tracking-widest">Clear Filters</button>
             </div>
           )}
         </section>
@@ -322,14 +269,12 @@ const AppContent: React.FC = () => {
                 <span className="text-2xl font-black tracking-tighter uppercase font-outfit text-[#0072ce]">PLAYFREE</span>
               </div>
               <p className="text-slate-500 text-base font-bold max-w-sm">
-                Next-gen archival gateway for PlayStation history.
+                Authentic preservation of the PlayStation ecosystem.
               </p>
            </div>
            <div className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-full shadow-sm">
-             <Activity className={`w-3.5 h-3.5 ${fetchError ? 'text-amber-500' : 'text-emerald-500'}`} />
-             <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">
-               {fetchError ? 'Sync Latency' : 'Secure Vault Active'}
-             </span>
+             <Activity className="w-3.5 h-3.5 text-emerald-500" />
+             <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">System Nominal</span>
            </div>
         </div>
       </footer>
