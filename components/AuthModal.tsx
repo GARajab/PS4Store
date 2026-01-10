@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect } from 'react';
-import { X, LogIn, UserPlus, Gamepad2, Send, Shield, Activity, Fingerprint } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { X, LogIn, UserPlus, Gamepad2, Send, Shield, Activity, Fingerprint, RefreshCcw } from 'lucide-react';
 import { User } from '../types';
 import { supabase } from '../lib/supabase';
 import { PulseSpinner } from './LoadingSpinner';
@@ -22,23 +22,34 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }) => {
   const [verificationSent, setVerificationSent] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'checking' | 'online' | 'offline'>('checking');
 
+  const checkConnection = useCallback(async () => {
+    setConnectionStatus('checking');
+    try {
+      const { error } = await supabase.auth.getSession();
+      if (error) throw error;
+      setConnectionStatus('online');
+    } catch (err) {
+      console.error("Supabase connection check failed:", err);
+      setConnectionStatus('offline');
+    }
+  }, []);
+
   useEffect(() => {
-    const checkConnection = async () => {
-      try {
-        const { error } = await supabase.auth.getSession();
-        if (error) throw error;
-        setConnectionStatus('online');
-      } catch (err) {
-        setConnectionStatus('offline');
-      }
-    };
-    if (isOpen) checkConnection();
-  }, [isOpen]);
+    if (isOpen) {
+      // Small delay to prevent layout flicker and give Supabase a moment to initialize if needed
+      const timer = setTimeout(checkConnection, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen, checkConnection]);
 
   if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (connectionStatus === 'offline') {
+      showToast('error', 'Connection Blocked', 'Unable to reach the authentication gateway. Please check your network.');
+      return;
+    }
     setLoading(true);
 
     try {
@@ -129,7 +140,6 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }) => {
                     <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest ml-1">Identity ID</label>
                     <input 
                       type="text" required value={username} 
-                      // Fix: Corrected onChange to use an arrow function with event parameter 'e'
                       onChange={e => setUsername(e.target.value)}
                       className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:bg-white focus:border-[#0072ce] outline-none text-slate-900 font-bold text-sm placeholder:text-slate-300 transition-all"
                       placeholder="PLAYER_ALPHA"
@@ -156,7 +166,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }) => {
                 </div>
 
                 <button 
-                  type="submit" disabled={loading}
+                  type="submit" disabled={loading || connectionStatus === 'checking'}
                   className="w-full bg-[#0072ce] hover:bg-[#005bb8] text-white font-black py-5 rounded-[2rem] mt-4 transition-all active:scale-95 disabled:opacity-50 flex justify-center items-center gap-3 shadow-2xl shadow-blue-500/10 text-xs tracking-widest uppercase"
                 >
                   {loading ? <PulseSpinner /> : (isLogin ? <LogIn className="w-5 h-5" /> : <UserPlus className="w-5 h-5" />)}
@@ -173,11 +183,23 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }) => {
                 </button>
                 
                 <div className="flex flex-col items-center gap-3">
-                   <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-slate-50 border border-slate-200">
-                      <div className={`w-1.5 h-1.5 rounded-full ${connectionStatus === 'online' ? 'bg-[#0072ce] animate-pulse' : 'bg-red-400'}`} />
+                   <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-slate-50 border border-slate-200 group">
+                      <div className={`w-1.5 h-1.5 rounded-full transition-colors ${
+                        connectionStatus === 'online' ? 'bg-[#0072ce] animate-pulse' : 
+                        connectionStatus === 'checking' ? 'bg-amber-400 animate-spin' : 'bg-red-400'
+                      }`} />
                       <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">
-                        {connectionStatus === 'online' ? 'System Online' : 'Sync Failed'}
+                        {connectionStatus === 'online' ? 'System Online' : 
+                         connectionStatus === 'checking' ? 'Synchronizing...' : 'Sync Failed'}
                       </span>
+                      {connectionStatus === 'offline' && (
+                        <button 
+                          onClick={checkConnection}
+                          className="ml-1 p-1 hover:bg-slate-200 rounded-full transition-colors text-slate-500"
+                        >
+                          <RefreshCcw className="w-2.5 h-2.5" />
+                        </button>
+                      )}
                    </div>
                 </div>
               </div>

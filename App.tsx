@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Game, User, Platform } from './types';
 import { supabase } from './lib/supabase';
 import GameCard from './components/GameCard';
@@ -8,10 +8,11 @@ import AuthModal from './components/AuthModal';
 import AdminPanel from './components/AdminPanel';
 import TrailerModal from './components/TrailerModal';
 import { SkeletonCard } from './components/LoadingSpinner';
-import { Search, Gamepad2, LayoutGrid, Library, TrendingUp, Sparkles } from 'lucide-react';
-import { ToastProvider } from './context/ToastContext';
+import { Search, Gamepad2, LayoutGrid, Library, TrendingUp, Sparkles, RefreshCw, Database } from 'lucide-react';
+import { ToastProvider, useToast } from './context/ToastContext';
 
 const AppContent: React.FC = () => {
+  const { showToast } = useToast();
   const [games, setGames] = useState<Game[]>([]);
   const [user, setUser] = useState<User | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -20,65 +21,98 @@ const AppContent: React.FC = () => {
   const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [editingGame, setEditingGame] = useState<Game | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [reportCount, setReportCount] = useState(0);
   
   const [viewMode, setViewMode] = useState<'store' | 'library'>('store');
   const [libraryIds, setLibraryIds] = useState<string[]>([]);
-
   const [activeTrailer, setActiveTrailer] = useState<Game | null>(null);
 
-  const fetchGames = async () => {
+  const fetchGames = useCallback(async () => {
     setIsLoading(true);
-    const { data, error } = await supabase
-      .from('games')
-      .select('*')
-      .order('download_count', { ascending: false });
+    setFetchError(null);
+    try {
+      const { data, error } = await supabase
+        .from('games')
+        .select('*')
+        .order('download_count', { ascending: false });
 
-    if (!error) setGames(data || []);
-    setIsLoading(false);
-  };
+      if (error) {
+        // If table doesn't exist, we'll treat it as empty but notify admins
+        if (error.code === 'PGRST116' || error.message.includes('not found')) {
+          setGames([]);
+        } else {
+          throw error;
+        }
+      } else {
+        setGames(data || []);
+      }
+    } catch (err: any) {
+      console.error("Fetch Games Error:", err);
+      setFetchError(err.message || "Failed to synchronize with archival registry.");
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
   const fetchReportCount = async () => {
-    const { count, error } = await supabase
-      .from('reports')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'pending');
-    
-    if (!error) setReportCount(count || 0);
-  };
-
-  const fetchUserLibrary = async (userId: string) => {
-    const { data, error } = await supabase
-      .from('user_library')
-      .select('game_id')
-      .eq('user_id', userId);
-    
-    if (!error && data) {
-      setLibraryIds(data.map(item => item.game_id));
+    try {
+      const { count, error } = await supabase
+        .from('reports')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'pending');
+      
+      if (!error) setReportCount(count || 0);
+    } catch (e) {
+      // Silently fail for non-critical report count
     }
   };
 
-  const getFullUser = async (sbUser: any): Promise<User> => {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('is_admin, username')
-      .eq('id', sbUser.id)
-      .single();
+  const fetchUserLibrary = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('user_library')
+        .select('game_id')
+        .eq('user_id', userId);
+      
+      if (!error && data) {
+        setLibraryIds(data.map(item => item.game_id));
+      }
+    } catch (e) {}
+  };
 
-    return {
-      id: sbUser.id,
-      username: profile?.username || sbUser.user_metadata?.username || sbUser.email?.split('@')[0],
-      email: sbUser.email || '',
-      isAdmin: profile?.is_admin || sbUser.email?.toLowerCase().includes('admin') || false,
-    };
+  const getFullUser = async (sbUser: any): Promise<User> => {
+    try {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('is_admin, username')
+        .eq('id', sbUser.id)
+        .single();
+
+      return {
+        id: sbUser.id,
+        username: profile?.username || sbUser.user_metadata?.username || sbUser.email?.split('@')[0],
+        email: sbUser.email || '',
+        isAdmin: profile?.is_admin || sbUser.email?.toLowerCase().includes('admin') || false,
+      };
+    } catch (e) {
+      return {
+        id: sbUser.id,
+        username: sbUser.user_metadata?.username || sbUser.email?.split('@')[0],
+        email: sbUser.email || '',
+        isAdmin: sbUser.email?.toLowerCase().includes('admin') || false,
+      };
+    }
   };
 
   useEffect(() => {
+    let mounted = true;
+    
     fetchGames();
     fetchReportCount();
     
     supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (session?.user && session.user.email_confirmed_at) {
+      if (mounted && session?.user && session.user.email_confirmed_at) {
         const fullUser = await getFullUser(session.user);
         setUser(fullUser);
         fetchUserLibrary(fullUser.id);
@@ -86,6 +120,7 @@ const AppContent: React.FC = () => {
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!mounted) return;
       if ((event === 'SIGNED_IN' || event === 'USER_UPDATED') && session?.user && session.user.email_confirmed_at) {
         const fullUser = await getFullUser(session.user);
         setUser(fullUser);
@@ -97,8 +132,11 @@ const AppContent: React.FC = () => {
       }
     });
 
-    return () => subscription.unsubscribe();
-  }, []);
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, [fetchGames]);
 
   const handleDownload = async (game: Game) => {
     if (!user) {
@@ -198,6 +236,18 @@ const AppContent: React.FC = () => {
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-10">
               {[...Array(10)].map((_, i) => <SkeletonCard key={i} />)}
             </div>
+          ) : fetchError ? (
+            <div className="py-40 text-center glass-panel rounded-[4rem] border border-red-100 animate-fade bg-red-50/30">
+              <RefreshCw className="w-20 h-20 text-red-200 mx-auto mb-8 animate-spin-slow" />
+              <h3 className="text-3xl font-black font-outfit uppercase text-red-600 mb-3 tracking-tighter">Sync Interrupted</h3>
+              <p className="text-slate-500 text-lg font-medium mb-12 max-w-md mx-auto">{fetchError}</p>
+              <button 
+                onClick={fetchGames}
+                className="px-12 py-5 bg-slate-900 text-white rounded-full text-[12px] font-black uppercase tracking-widest active:scale-95 shadow-xl"
+              >
+                Attempt Re-Sync
+              </button>
+            </div>
           ) : filteredGames.length > 0 ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-x-8 gap-y-12">
               {filteredGames.map(game => (
@@ -214,15 +264,31 @@ const AppContent: React.FC = () => {
             </div>
           ) : (
             <div className="py-40 text-center glass-panel rounded-[4rem] border border-slate-100 animate-fade">
-              <Gamepad2 className="w-20 h-20 text-slate-100 mx-auto mb-8" />
-              <h3 className="text-3xl font-black font-outfit uppercase text-[#0072ce] mb-3 tracking-tighter">Null Result</h3>
-              <p className="text-slate-400 text-lg font-medium mb-12">No matching archival signatures found in this sector.</p>
-              <button 
-                onClick={() => {setSearchQuery(''); setFilterPlatform('All'); setViewMode('store');}}
-                className="px-12 py-5 btn-primary rounded-full text-[12px] font-black uppercase tracking-widest active:scale-95"
-              >
-                Reset Sector
-              </button>
+              <Database className="w-20 h-20 text-slate-100 mx-auto mb-8" />
+              <h3 className="text-3xl font-black font-outfit uppercase text-[#0072ce] mb-3 tracking-tighter">
+                {searchQuery || filterPlatform !== 'All' ? 'Null Result' : 'Registry Empty'}
+              </h3>
+              <p className="text-slate-400 text-lg font-medium mb-12">
+                {searchQuery || filterPlatform !== 'All' 
+                  ? 'No matching archival signatures found in this sector.' 
+                  : 'The master database contains no entries. Initial setup required.'}
+              </p>
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+                <button 
+                  onClick={() => {setSearchQuery(''); setFilterPlatform('All'); setViewMode('store'); fetchGames();}}
+                  className="px-12 py-5 btn-primary rounded-full text-[12px] font-black uppercase tracking-widest active:scale-95"
+                >
+                  Reset Catalog
+                </button>
+                {user?.isAdmin && (
+                   <button 
+                    onClick={() => setShowAdminPanel(true)}
+                    className="px-12 py-5 bg-white border border-slate-200 text-slate-900 rounded-full text-[12px] font-black uppercase tracking-widest active:scale-95"
+                  >
+                    Setup Registry
+                  </button>
+                )}
+              </div>
             </div>
           )}
         </section>
