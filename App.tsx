@@ -29,8 +29,13 @@ const AppContent: React.FC = () => {
   const [activeTrailer, setActiveTrailer] = useState<Game | null>(null);
 
   const isBooted = useRef(false);
+  const authInitialized = useRef(false);
 
-  const getFullUser = async (sbUser: any): Promise<User> => {
+  /**
+   * RECOVER USER PROFILE
+   * Fetches administrative metadata for the authenticated user.
+   */
+  const getFullUser = useCallback(async (sbUser: any): Promise<User> => {
     try {
       const { data: profile } = await supabase
         .from('profiles')
@@ -52,8 +57,30 @@ const AppContent: React.FC = () => {
         isAdmin: sbUser.email?.toLowerCase().includes('admin') || false,
       };
     }
-  };
+  }, []);
 
+  /**
+   * SYNC USER DATA
+   * Loads library and other user-specific context.
+   */
+  const syncUserContext = useCallback(async (fullUser: User) => {
+    try {
+      const { data: libData } = await supabase
+        .from('user_library')
+        .select('game_id')
+        .eq('user_id', fullUser.id);
+      
+      if (libData) {
+        setLibraryIds(libData.map(item => item.game_id));
+      }
+    } catch (e) {
+      console.error("[Sync] Failed to load user library:", e);
+    }
+  }, []);
+
+  /**
+   * FETCH GLOBAL CONTENT
+   */
   const fetchGames = useCallback(async () => {
     try {
       const { data, error } = await supabase
@@ -73,47 +100,41 @@ const AppContent: React.FC = () => {
       }
     } catch (err: any) {
       if (err.name === 'AbortError' || err.message?.includes('aborted')) {
-        console.debug("[App] Fetch aborted, skipping error state.");
         return;
       }
       setFetchError(err.message || "Failed to synchronize with the game repository.");
     }
   }, []);
 
+  /**
+   * MAIN INITIALIZATION
+   */
   const initializeApp = useCallback(async () => {
     if (isBooted.current) return;
     setIsLoading(true);
-    
-    // DELAYED BOOT: Wait for browser stability on production domains
-    await new Promise(resolve => setTimeout(resolve, 1000));
 
     try {
-      // 1. Session check
-      let session = null;
-      try {
-        const { data } = await supabase.auth.getSession();
-        session = data.session;
-      } catch (e) {
-        console.debug("[Init] Auth session check bypassed due to handshake error.");
-      }
-
-      if (session?.user) {
+      // 1. Initial Session Check (Immediate)
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (session?.user && !authInitialized.current) {
         const fullUser = await getFullUser(session.user);
         setUser(fullUser);
-        try {
-          const { data: libData } = await supabase.from('user_library').select('game_id').eq('user_id', fullUser.id);
-          if (libData) setLibraryIds(libData.map(item => item.game_id));
-        } catch (e) {}
+        await syncUserContext(fullUser);
+        authInitialized.current = true;
       }
 
-      // 2. Load Content
+      // 2. Load Registry
       await fetchGames();
       
-      // 3. Reports
-      try {
-        const { count } = await supabase.from('reports').select('*', { count: 'exact', head: true }).eq('status', 'pending');
+      // 3. Load Reports metadata (for Admins)
+      if (user?.isAdmin) {
+        const { count } = await supabase
+          .from('reports')
+          .select('*', { count: 'exact', head: true })
+          .eq('status', 'pending');
         setReportCount(count || 0);
-      } catch (e) {}
+      }
 
       isBooted.current = true;
     } catch (err: any) {
@@ -122,33 +143,41 @@ const AppContent: React.FC = () => {
         setFetchError("Master connection interrupted. Retrying...");
       }
     } finally {
-      // ABSOLUTE GUARANTEE: Remove loading screen
       setIsLoading(false);
     }
-  }, [fetchGames]);
+  }, [fetchGames, getFullUser, syncUserContext, user?.isAdmin]);
 
+  /**
+   * AUTH LISTENER
+   * Handles session recovery, sign-ins, and sign-outs.
+   */
   useEffect(() => {
-    initializeApp();
-
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
-        if (session?.user) {
-          const fullUser = await getFullUser(session.user);
-          setUser(fullUser);
-          try {
-            const { data: libData } = await supabase.from('user_library').select('game_id').eq('user_id', fullUser.id);
-            if (libData) setLibraryIds(libData.map(item => item.game_id));
-          } catch (e) {}
-        }
-      } else if (event === 'SIGNED_OUT') {
+      console.log(`[Auth] Event: ${event}`);
+      
+      if (session?.user) {
+        const fullUser = await getFullUser(session.user);
+        setUser(fullUser);
+        await syncUserContext(fullUser);
+        authInitialized.current = true;
+      } else {
         setUser(null);
         setLibraryIds([]);
         setViewMode('store');
+        authInitialized.current = false;
+      }
+
+      // If this is the initial session detection, we can stop the loading spinner
+      if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN') {
+        setIsLoading(false);
       }
     });
 
+    // Run the main app initialization
+    initializeApp();
+
     return () => subscription.unsubscribe();
-  }, [initializeApp]);
+  }, [initializeApp, getFullUser, syncUserContext]);
 
   const handleDownload = async (game: Game) => {
     if (!user) {
@@ -160,6 +189,7 @@ const AppContent: React.FC = () => {
       if (!libraryIds.includes(game.id)) {
         await supabase.from('user_library').insert([{ user_id: user.id, game_id: game.id }]);
         setLibraryIds(prev => [...prev, game.id]);
+        showToast('success', 'Library Updated', `${game.title} added to your collection.`);
       }
       await supabase.from('games').update({ download_count: (game.download_count || 0) + 1 }).eq('id', game.id);
       setGames(prev => prev.map(g => g.id === game.id ? { ...g, download_count: (g.download_count || 0) + 1 } : g));
@@ -316,7 +346,7 @@ const AppContent: React.FC = () => {
       </footer>
 
       {showAuthModal && <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} onLogin={u => setUser(u)} />}
-      {showAdminPanel && <AdminPanel games={games} initialGame={editingGame} onUpdateGame={initializeApp} onAddGame={initializeApp} onClose={() => setShowAdminPanel(false)} />}
+      {showAdminPanel && <AdminPanel games={games} initialGame={editingGame} onUpdateGame={fetchGames} onAddGame={fetchGames} onClose={() => setShowAdminPanel(false)} />}
       {activeTrailer && <TrailerModal isOpen={!!activeTrailer} onClose={() => setActiveTrailer(null)} trailerUrl={activeTrailer.trailerUrl || ''} title={activeTrailer.title} />}
     </div>
   );
