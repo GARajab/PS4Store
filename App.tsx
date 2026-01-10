@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Game, User, Platform } from './types';
 import { supabase } from './lib/supabase';
 import GameCard from './components/GameCard';
@@ -28,17 +28,22 @@ const AppContent: React.FC = () => {
   const [libraryIds, setLibraryIds] = useState<string[]>([]);
   const [activeTrailer, setActiveTrailer] = useState<Game | null>(null);
 
-  const fetchGames = useCallback(async () => {
+  const isFirstLoad = useRef(true);
+
+  const fetchGames = useCallback(async (isRetry = false) => {
     setIsLoading(true);
     setFetchError(null);
+    
     try {
+      // Adding a small delay for retries to allow network state to settle
+      if (isRetry) await new Promise(r => setTimeout(r, 800));
+
       const { data, error } = await supabase
         .from('games')
         .select('*')
         .order('download_count', { ascending: false });
 
       if (error) {
-        // If table doesn't exist, we'll treat it as empty but notify admins
         if (error.code === 'PGRST116' || error.message.includes('not found')) {
           setGames([]);
         } else {
@@ -48,8 +53,12 @@ const AppContent: React.FC = () => {
         setGames(data || []);
       }
     } catch (err: any) {
-      console.error("Fetch Games Error:", err);
-      setFetchError(err.message || "Failed to synchronize with archival registry.");
+      console.error("Archival Fetch Sequence Interrupted:", err);
+      // Explicitly handle the 'signal is aborted' error as a connectivity warning
+      const message = err.name === 'AbortError' 
+        ? "Network request was interrupted. Please check your connection and retry."
+        : (err.message || "Failed to synchronize with archival registry.");
+      setFetchError(message);
     } finally {
       setIsLoading(false);
     }
@@ -57,27 +66,21 @@ const AppContent: React.FC = () => {
 
   const fetchReportCount = async () => {
     try {
-      const { count, error } = await supabase
+      const { count } = await supabase
         .from('reports')
         .select('*', { count: 'exact', head: true })
         .eq('status', 'pending');
-      
-      if (!error) setReportCount(count || 0);
-    } catch (e) {
-      // Silently fail for non-critical report count
-    }
+      setReportCount(count || 0);
+    } catch (e) {}
   };
 
   const fetchUserLibrary = async (userId: string) => {
     try {
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('user_library')
         .select('game_id')
         .eq('user_id', userId);
-      
-      if (!error && data) {
-        setLibraryIds(data.map(item => item.game_id));
-      }
+      if (data) setLibraryIds(data.map(item => item.game_id));
     } catch (e) {}
   };
 
@@ -107,9 +110,12 @@ const AppContent: React.FC = () => {
 
   useEffect(() => {
     let mounted = true;
-    
-    fetchGames();
-    fetchReportCount();
+
+    if (isFirstLoad.current) {
+      fetchGames();
+      fetchReportCount();
+      isFirstLoad.current = false;
+    }
     
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (mounted && session?.user && session.user.email_confirmed_at) {
@@ -117,6 +123,8 @@ const AppContent: React.FC = () => {
         setUser(fullUser);
         fetchUserLibrary(fullUser.id);
       }
+    }).catch(() => {
+      // Ignore initial session errors to allow the app to load in guest mode
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
@@ -242,10 +250,10 @@ const AppContent: React.FC = () => {
               <h3 className="text-3xl font-black font-outfit uppercase text-red-600 mb-3 tracking-tighter">Sync Interrupted</h3>
               <p className="text-slate-500 text-lg font-medium mb-12 max-w-md mx-auto">{fetchError}</p>
               <button 
-                onClick={fetchGames}
-                className="px-12 py-5 bg-slate-900 text-white rounded-full text-[12px] font-black uppercase tracking-widest active:scale-95 shadow-xl"
+                onClick={() => fetchGames(true)}
+                className="px-12 py-5 bg-[#0072ce] text-white rounded-full text-[12px] font-black uppercase tracking-widest active:scale-95 shadow-xl hover:bg-[#005bb8] transition-all"
               >
-                Attempt Re-Sync
+                Force Re-Sync
               </button>
             </div>
           ) : filteredGames.length > 0 ? (
@@ -275,7 +283,7 @@ const AppContent: React.FC = () => {
               </p>
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                 <button 
-                  onClick={() => {setSearchQuery(''); setFilterPlatform('All'); setViewMode('store'); fetchGames();}}
+                  onClick={() => {setSearchQuery(''); setFilterPlatform('All'); setViewMode('store'); fetchGames(true);}}
                   className="px-12 py-5 btn-primary rounded-full text-[12px] font-black uppercase tracking-widest active:scale-95"
                 >
                   Reset Catalog

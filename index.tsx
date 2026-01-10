@@ -9,8 +9,5 @@ if (!rootElement) {
 }
 
 const root = ReactDOM.createRoot(rootElement);
-root.render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
+// Removed StrictMode to prevent double-mounting lifecycle issues with Supabase internal fetches
+root.render(<App />);
