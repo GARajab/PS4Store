@@ -22,13 +22,19 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }) => {
   const [verificationSent, setVerificationSent] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'checking' | 'online' | 'offline'>('checking');
 
-  const checkConnection = useCallback(async () => {
+  const checkConnection = useCallback(async (isRetry = false) => {
     setConnectionStatus('checking');
     try {
+      // Adding a small stagger for the auth check
+      await new Promise(r => setTimeout(r, 200));
       const { error } = await supabase.auth.getSession();
       if (error) throw error;
       setConnectionStatus('online');
-    } catch (err) {
+    } catch (err: any) {
+      if (err.name === 'AbortError' && !isRetry) {
+        await new Promise(r => setTimeout(r, 800));
+        return checkConnection(true);
+      }
       console.error("Supabase connection check failed:", err);
       setConnectionStatus('offline');
     }
@@ -36,9 +42,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }) => {
 
   useEffect(() => {
     if (isOpen) {
-      // Small delay to prevent layout flicker and give Supabase a moment to initialize if needed
-      const timer = setTimeout(checkConnection, 500);
-      return () => clearTimeout(timer);
+      checkConnection();
     }
   }, [isOpen, checkConnection]);
 
@@ -47,7 +51,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (connectionStatus === 'offline') {
-      showToast('error', 'Connection Blocked', 'Unable to reach the authentication gateway. Please check your network.');
+      showToast('error', 'Connection Blocked', 'Unable to reach the authentication gateway.');
       return;
     }
     setLoading(true);
@@ -194,7 +198,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }) => {
                       </span>
                       {connectionStatus === 'offline' && (
                         <button 
-                          onClick={checkConnection}
+                          onClick={() => checkConnection()}
                           className="ml-1 p-1 hover:bg-slate-200 rounded-full transition-colors text-slate-500"
                         >
                           <RefreshCcw className="w-2.5 h-2.5" />

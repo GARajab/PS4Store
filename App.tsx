@@ -28,61 +28,7 @@ const AppContent: React.FC = () => {
   const [libraryIds, setLibraryIds] = useState<string[]>([]);
   const [activeTrailer, setActiveTrailer] = useState<Game | null>(null);
 
-  const isFirstLoad = useRef(true);
-
-  const fetchGames = useCallback(async (isRetry = false) => {
-    setIsLoading(true);
-    setFetchError(null);
-    
-    try {
-      // Adding a small delay for retries to allow network state to settle
-      if (isRetry) await new Promise(r => setTimeout(r, 800));
-
-      const { data, error } = await supabase
-        .from('games')
-        .select('*')
-        .order('download_count', { ascending: false });
-
-      if (error) {
-        if (error.code === 'PGRST116' || error.message.includes('not found')) {
-          setGames([]);
-        } else {
-          throw error;
-        }
-      } else {
-        setGames(data || []);
-      }
-    } catch (err: any) {
-      console.error("Archival Fetch Sequence Interrupted:", err);
-      // Explicitly handle the 'signal is aborted' error as a connectivity warning
-      const message = err.name === 'AbortError' 
-        ? "Network request was interrupted. Please check your connection and retry."
-        : (err.message || "Failed to synchronize with archival registry.");
-      setFetchError(message);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  const fetchReportCount = async () => {
-    try {
-      const { count } = await supabase
-        .from('reports')
-        .select('*', { count: 'exact', head: true })
-        .eq('status', 'pending');
-      setReportCount(count || 0);
-    } catch (e) {}
-  };
-
-  const fetchUserLibrary = async (userId: string) => {
-    try {
-      const { data } = await supabase
-        .from('user_library')
-        .select('game_id')
-        .eq('user_id', userId);
-      if (data) setLibraryIds(data.map(item => item.game_id));
-    } catch (e) {}
-  };
+  const initAttempted = useRef(false);
 
   const getFullUser = async (sbUser: any): Promise<User> => {
     try {
@@ -108,31 +54,81 @@ const AppContent: React.FC = () => {
     }
   };
 
-  useEffect(() => {
-    let mounted = true;
+  const fetchGames = useCallback(async (isRetry = false) => {
+    try {
+      const { data, error } = await supabase
+        .from('games')
+        .select('*')
+        .order('download_count', { ascending: false });
 
-    if (isFirstLoad.current) {
-      fetchGames();
-      fetchReportCount();
-      isFirstLoad.current = false;
+      if (error) {
+        if (error.code === 'PGRST116' || error.message.includes('not found')) {
+          setGames([]);
+        } else {
+          throw error;
+        }
+      } else {
+        setGames(data || []);
+        setFetchError(null);
+      }
+    } catch (err: any) {
+      if (err.name === 'AbortError' && !isRetry) {
+        // Automatic single silent retry for AbortErrors
+        await new Promise(r => setTimeout(r, 500));
+        return fetchGames(true);
+      }
+      console.error("Archival Fetch Error:", err);
+      setFetchError(err.name === 'AbortError' 
+        ? "Network sequence interrupted. Please check connection." 
+        : (err.message || "Failed to sync with archival registry."));
     }
+  }, []);
+
+  const initializeApp = useCallback(async () => {
+    setIsLoading(true);
+    setFetchError(null);
     
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (mounted && session?.user && session.user.email_confirmed_at) {
+    try {
+      // 1. Initial wait to ensure browser environment is stable
+      await new Promise(r => setTimeout(r, 300));
+      
+      // 2. Sequential load to prevent AbortError collisions
+      await fetchGames();
+      
+      // 3. Staggered supplementary loads
+      await new Promise(r => setTimeout(r, 100));
+      const { count } = await supabase.from('reports').select('*', { count: 'exact', head: true }).eq('status', 'pending');
+      setReportCount(count || 0);
+
+      // 4. Session check
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user && session.user.email_confirmed_at) {
         const fullUser = await getFullUser(session.user);
         setUser(fullUser);
-        fetchUserLibrary(fullUser.id);
+        
+        const { data: libData } = await supabase.from('user_library').select('game_id').eq('user_id', fullUser.id);
+        if (libData) setLibraryIds(libData.map(item => item.game_id));
       }
-    }).catch(() => {
-      // Ignore initial session errors to allow the app to load in guest mode
-    });
+    } catch (err: any) {
+      console.error("Initialization failed:", err);
+      if (!games.length) setFetchError("System initialization failed. Project may be paused or unreachable.");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [fetchGames]);
+
+  useEffect(() => {
+    if (!initAttempted.current) {
+      initializeApp();
+      initAttempted.current = true;
+    }
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (!mounted) return;
       if ((event === 'SIGNED_IN' || event === 'USER_UPDATED') && session?.user && session.user.email_confirmed_at) {
         const fullUser = await getFullUser(session.user);
         setUser(fullUser);
-        fetchUserLibrary(fullUser.id);
+        const { data: libData } = await supabase.from('user_library').select('game_id').eq('user_id', fullUser.id);
+        if (libData) setLibraryIds(libData.map(item => item.game_id));
       } else if (event === 'SIGNED_OUT') {
         setUser(null);
         setLibraryIds([]);
@@ -140,11 +136,8 @@ const AppContent: React.FC = () => {
       }
     });
 
-    return () => {
-      mounted = false;
-      subscription.unsubscribe();
-    };
-  }, [fetchGames]);
+    return () => subscription.unsubscribe();
+  }, [initializeApp]);
 
   const handleDownload = async (game: Game) => {
     if (!user) {
@@ -178,7 +171,11 @@ const AppContent: React.FC = () => {
       return false;
     }
     const { error } = await supabase.from('reports').insert([{ game_id: game.id, user_id: user.id, status: 'pending' }]);
-    if (!error) { fetchReportCount(); return true; }
+    if (!error) { 
+      const { count } = await supabase.from('reports').select('*', { count: 'exact', head: true }).eq('status', 'pending');
+      setReportCount(count || 0);
+      return true; 
+    }
     return false;
   };
 
@@ -250,7 +247,7 @@ const AppContent: React.FC = () => {
               <h3 className="text-3xl font-black font-outfit uppercase text-red-600 mb-3 tracking-tighter">Sync Interrupted</h3>
               <p className="text-slate-500 text-lg font-medium mb-12 max-w-md mx-auto">{fetchError}</p>
               <button 
-                onClick={() => fetchGames(true)}
+                onClick={initializeApp}
                 className="px-12 py-5 bg-[#0072ce] text-white rounded-full text-[12px] font-black uppercase tracking-widest active:scale-95 shadow-xl hover:bg-[#005bb8] transition-all"
               >
                 Force Re-Sync
@@ -283,7 +280,7 @@ const AppContent: React.FC = () => {
               </p>
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                 <button 
-                  onClick={() => {setSearchQuery(''); setFilterPlatform('All'); setViewMode('store'); fetchGames(true);}}
+                  onClick={() => {setSearchQuery(''); setFilterPlatform('All'); setViewMode('store'); initializeApp();}}
                   className="px-12 py-5 btn-primary rounded-full text-[12px] font-black uppercase tracking-widest active:scale-95"
                 >
                   Reset Catalog
@@ -337,7 +334,7 @@ const AppContent: React.FC = () => {
       </footer>
 
       {showAuthModal && <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} onLogin={u => setUser(u)} />}
-      {showAdminPanel && <AdminPanel games={games} initialGame={editingGame} onUpdateGame={fetchGames} onAddGame={fetchGames} onClose={() => setShowAdminPanel(false)} />}
+      {showAdminPanel && <AdminPanel games={games} initialGame={editingGame} onUpdateGame={initializeApp} onAddGame={initializeApp} onClose={() => setShowAdminPanel(false)} />}
       
       {activeTrailer && (
         <TrailerModal 
