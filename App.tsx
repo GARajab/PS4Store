@@ -1,15 +1,17 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Game, User, Platform, GameReport } from './types';
+import { Game, User, Platform } from './types';
 import { supabase } from './lib/supabase';
 import GameCard from './components/GameCard';
 import Navbar from './components/Navbar';
 import AuthModal from './components/AuthModal';
 import AdminPanel from './components/AdminPanel';
+import TrailerModal from './components/TrailerModal';
 import { SkeletonCard } from './components/LoadingSpinner';
-import { Search, Gamepad2, TrendingUp, Sparkles, Filter, Bookmark, ChevronRight } from 'lucide-react';
+import { Search, Gamepad2, LayoutGrid, Library, TrendingUp, Sparkles } from 'lucide-react';
+import { ToastProvider } from './context/ToastContext';
 
-const App: React.FC = () => {
+const AppContent: React.FC = () => {
   const [games, setGames] = useState<Game[]>([]);
   const [user, setUser] = useState<User | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -20,9 +22,10 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [reportCount, setReportCount] = useState(0);
   
-  // My Library State
   const [viewMode, setViewMode] = useState<'store' | 'library'>('store');
   const [libraryIds, setLibraryIds] = useState<string[]>([]);
+
+  const [activeTrailer, setActiveTrailer] = useState<Game | null>(null);
 
   const fetchGames = async () => {
     setIsLoading(true);
@@ -44,36 +47,53 @@ const App: React.FC = () => {
     if (!error) setReportCount(count || 0);
   };
 
+  const fetchUserLibrary = async (userId: string) => {
+    const { data, error } = await supabase
+      .from('user_library')
+      .select('game_id')
+      .eq('user_id', userId);
+    
+    if (!error && data) {
+      setLibraryIds(data.map(item => item.game_id));
+    }
+  };
+
+  const getFullUser = async (sbUser: any): Promise<User> => {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('is_admin, username')
+      .eq('id', sbUser.id)
+      .single();
+
+    return {
+      id: sbUser.id,
+      username: profile?.username || sbUser.user_metadata?.username || sbUser.email?.split('@')[0],
+      email: sbUser.email || '',
+      isAdmin: profile?.is_admin || sbUser.email?.toLowerCase().includes('admin') || false,
+    };
+  };
+
   useEffect(() => {
     fetchGames();
     fetchReportCount();
     
-    const savedLibrary = localStorage.getItem('playfree_library');
-    if (savedLibrary) {
-      setLibraryIds(JSON.parse(savedLibrary));
-    }
-
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        setUser({
-          id: session.user.id,
-          username: session.user.user_metadata?.username || session.user.email?.split('@')[0],
-          email: session.user.email || '',
-          isAdmin: session.user.email?.includes('admin') || false,
-        });
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (session?.user && session.user.email_confirmed_at) {
+        const fullUser = await getFullUser(session.user);
+        setUser(fullUser);
+        fetchUserLibrary(fullUser.id);
       }
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        setUser({
-          id: session.user.id,
-          username: session.user.user_metadata?.username || session.user.email?.split('@')[0],
-          email: session.user.email || '',
-          isAdmin: session.user.email?.includes('admin') || false,
-        });
-      } else {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if ((event === 'SIGNED_IN' || event === 'USER_UPDATED') && session?.user && session.user.email_confirmed_at) {
+        const fullUser = await getFullUser(session.user);
+        setUser(fullUser);
+        fetchUserLibrary(fullUser.id);
+      } else if (event === 'SIGNED_OUT') {
         setUser(null);
+        setLibraryIds([]);
+        setViewMode('store');
       }
     });
 
@@ -87,17 +107,19 @@ const App: React.FC = () => {
     }
 
     if (!libraryIds.includes(game.id)) {
-      const newLibrary = [...libraryIds, game.id];
-      setLibraryIds(newLibrary);
-      localStorage.setItem('playfree_library', JSON.stringify(newLibrary));
+      const { error: libError } = await supabase
+        .from('user_library')
+        .insert([{ user_id: user.id, game_id: game.id }]);
+      
+      if (!libError) setLibraryIds(prev => [...prev, game.id]);
     }
 
-    const { error } = await supabase
+    const { error: countError } = await supabase
       .from('games')
       .update({ download_count: (game.download_count || 0) + 1 })
       .eq('id', game.id);
 
-    if (!error) {
+    if (!countError) {
       setGames(prev => prev.map(g => g.id === game.id ? { ...g, download_count: (g.download_count || 0) + 1 } : g));
     }
 
@@ -109,19 +131,8 @@ const App: React.FC = () => {
       setShowAuthModal(true);
       return false;
     }
-
-    const { error } = await supabase
-      .from('reports')
-      .insert([{
-        game_id: game.id,
-        user_id: user.id,
-        status: 'pending'
-      }]);
-
-    if (!error) {
-      fetchReportCount();
-      return true;
-    }
+    const { error } = await supabase.from('reports').insert([{ game_id: game.id, user_id: user.id, status: 'pending' }]);
+    if (!error) { fetchReportCount(); return true; }
     return false;
   };
 
@@ -134,221 +145,152 @@ const App: React.FC = () => {
     });
   }, [games, searchQuery, filterPlatform, viewMode, libraryIds]);
 
-  const featuredGame = useMemo(() => {
-    const sorted = [...games].sort((a, b) => b.rating - a.rating);
-    return sorted[0];
-  }, [games]);
-
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col font-inter selection:bg-blue-600 selection:text-white">
+    <div className="min-h-screen flex flex-col text-white">
       <Navbar 
-        user={user} 
-        reportCount={reportCount}
+        user={user} reportCount={reportCount}
         onAuthClick={() => setShowAuthModal(true)} 
-        onLogout={() => supabase.auth.signOut()}
+        onLogout={async () => { await supabase.auth.signOut(); }}
         onAdminClick={() => { setEditingGame(null); setShowAdminPanel(true); }}
         onLibraryClick={() => setViewMode('library')}
         onHomeClick={() => setViewMode('store')}
       />
 
-      <main className="flex-grow max-w-7xl mx-auto px-6 py-12 w-full">
-        {/* Header Toggle */}
-        {viewMode === 'library' && (
-          <div className="mb-12 animate-in slide-in-from-left-4">
-             <div className="flex items-center gap-4 mb-2">
-                <button onClick={() => setViewMode('store')} className="text-blue-600 font-black text-sm hover:underline flex items-center gap-1">
-                  <ChevronRight className="w-4 h-4 rotate-180" /> Back to Store
-                </button>
-             </div>
-             <h2 className="text-5xl font-black text-slate-800 font-outfit">My Library</h2>
-             <p className="text-slate-500 font-medium">Your personal collection of downloaded titles.</p>
+      <main className="flex-grow pt-32 pb-20 px-6 max-w-[1400px] mx-auto w-full">
+        {/* Cinematic Header Section */}
+        <div className="mb-16 animate-fade">
+           <div className="flex items-center gap-2 mb-2">
+              <Sparkles className="w-4 h-4 text-blue-400" />
+              <span className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-400">Database Active</span>
+           </div>
+           <h1 className="text-4xl md:text-6xl font-black font-outfit uppercase tracking-tighter mb-4 leading-none">
+             Explore the <br/><span className="text-blue-500">Multiverse</span>
+           </h1>
+           <p className="max-w-xl text-slate-400 font-medium text-sm leading-relaxed">
+             Secure, encrypted repository for PlayStation archival titles. All digital assets are verified and distributed through peer-to-peer nodes.
+           </p>
+        </div>
+
+        {/* Global Controls Panel */}
+        <div className="mb-12 glass-panel p-2 rounded-[2.5rem] flex flex-col lg:flex-row items-center justify-between gap-4 shadow-2xl">
+          <div className="flex items-center gap-2 p-1 bg-white/5 rounded-[2rem] border border-white/5 w-full lg:w-auto">
+             {['All', 'PS5', 'PS4'].map(p => (
+               <button
+                 key={p} onClick={() => setFilterPlatform(p as any)}
+                 className={`flex-grow lg:flex-none px-8 py-3 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${filterPlatform === p ? 'bg-white text-black shadow-xl' : 'text-slate-400 hover:text-white'}`}
+               >{p}</button>
+             ))}
           </div>
-        )}
 
-        {/* FEATURED HERO - LITE THEME + IMAGE FIT */}
-        {viewMode === 'store' && !searchQuery && filterPlatform === 'All' && featuredGame && (
-          <section className="mb-20 relative overflow-hidden rounded-[4rem] min-h-[500px] md:min-h-[600px] bg-slate-900 group shadow-[0_40px_100px_-20px_rgba(0,0,0,0.2)] border border-slate-200">
-            {/* Ambient Background Layer */}
-            <div className="absolute inset-0 z-0">
-              <img 
-                src={featuredGame.imageUrl} 
-                alt="Ambient Background" 
-                className="w-full h-full object-cover opacity-20 blur-3xl scale-125"
-              />
-            </div>
-
-            {/* Content Layer */}
-            <div className="relative z-10 grid grid-cols-1 lg:grid-cols-2 h-full min-h-[500px] md:min-h-[600px]">
-              {/* Left Side: Info */}
-              <div className="p-12 md:p-20 flex flex-col justify-center text-white bg-gradient-to-r from-slate-900 via-slate-900/90 to-transparent">
-                <div className="inline-flex items-center gap-2 bg-blue-600 px-5 py-2 rounded-2xl text-[10px] font-black tracking-[0.2em] uppercase mb-8 shadow-2xl w-fit">
-                  <Sparkles className="w-4 h-4" />
-                  Ultimate Pick
-                </div>
-                <h1 className="text-6xl md:text-8xl font-black mb-8 leading-[0.9] font-outfit tracking-tighter">
-                  {featuredGame.title.split(' ').map((word, i) => (
-                    <span key={i} className={i % 2 === 1 ? "text-blue-400" : "text-white"}>{word} </span>
-                  ))}
-                </h1>
-                <p className="text-xl md:text-2xl text-slate-300 mb-10 font-medium leading-relaxed max-w-lg">
-                  Dive into this season's most acclaimed masterpiece. High-fidelity gaming, now fully unlocked for your collection.
-                </p>
-                <div className="flex flex-wrap gap-4 mt-auto">
-                  <button 
-                    onClick={() => handleDownload(featuredGame)}
-                    className="bg-white text-slate-900 px-12 py-5 rounded-[2rem] font-black text-lg shadow-2xl hover:bg-blue-500 hover:text-white transition-all active:scale-95 flex items-center gap-3"
-                  >
-                    Get it Free <ChevronRight className="w-5 h-5" />
-                  </button>
-                  <div className="flex items-center gap-4 px-6 bg-white/10 backdrop-blur-xl rounded-[2rem] border border-white/20">
-                    <TrendingUp className="w-6 h-6 text-blue-400" />
-                    <span className="font-black text-lg text-white">TOP TRENDING</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Right Side: Image Containment */}
-              <div className="hidden lg:flex relative items-center justify-center p-12 overflow-hidden">
-                <div className="relative w-full h-full max-h-[480px] flex items-center justify-center transition-transform duration-700 group-hover:scale-[1.03]">
-                  <div className="relative rounded-[3rem] overflow-hidden shadow-[0_40px_80px_-15px_rgba(0,0,0,0.6)] border border-white/10 bg-slate-800 p-0 flex items-center justify-center">
-                    <img 
-                      src={featuredGame.imageUrl} 
-                      alt={featuredGame.title} 
-                      className="max-w-full max-h-full object-contain block"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent pointer-events-none" />
-                  </div>
-                  {/* Decorative ambient flare */}
-                  <div className="absolute -z-10 w-[140%] h-[140%] bg-blue-500/10 rounded-full blur-[120px] animate-pulse" />
-                </div>
-              </div>
-            </div>
-          </section>
-        )}
-
-        {/* Global Stats bar - Lite Version */}
-        {viewMode === 'store' && (
-          <div className="flex items-center justify-between mb-16 p-8 bg-white rounded-[3rem] shadow-xl shadow-slate-200/50 border border-slate-100">
-             <div className="flex items-center gap-4">
-                <div className="w-16 h-16 bg-blue-50 rounded-[1.75rem] flex items-center justify-center text-blue-600">
-                  <TrendingUp className="w-8 h-8" />
-                </div>
-                <div>
-                  <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Global Activity</p>
-                  <p className="text-2xl font-black text-slate-800 font-outfit">
-                    {games.reduce((acc, g) => acc + (g.download_count || 0), 0).toLocaleString()}+ <span className="text-blue-600">Downloads</span>
-                  </p>
-                </div>
-             </div>
-             <div className="hidden md:flex gap-12">
-               <div className="text-center">
-                 <p className="text-[10px] font-black text-slate-400 uppercase">Library</p>
-                 <p className="text-xl font-black text-slate-800">{games.length} Games</p>
-               </div>
-               <div className="text-center">
-                 <p className="text-[10px] font-black text-slate-400 uppercase">Cost</p>
-                 <p className="text-xl font-black text-emerald-500">$0.00</p>
-               </div>
-             </div>
+          <div className="relative w-full lg:w-96">
+             <Search className="absolute left-6 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+             <input 
+               type="text" placeholder="QUERY DATABASE..."
+               value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+               className="w-full pl-14 pr-6 py-4 rounded-[2rem] bg-black/40 border border-white/10 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none font-bold text-[11px] tracking-widest text-white placeholder:text-slate-600 transition-all uppercase"
+             />
           </div>
-        )}
+        </div>
 
-        {/* Filters & Search - Lite Version */}
-        <section className="mb-12 space-y-8">
-           <div className="flex flex-col md:flex-row gap-6 items-center justify-between">
-              <div className="relative w-full md:max-w-xl group">
-                <div className="absolute inset-y-0 left-6 flex items-center pointer-events-none">
-                  <Search className="w-6 h-6 text-slate-300 group-focus-within:text-blue-500 transition-colors" />
-                </div>
-                <input 
-                  type="text" 
-                  placeholder={viewMode === 'library' ? "Search your library..." : "What are we playing today?"}
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-16 pr-8 py-6 rounded-[2.5rem] bg-white border border-slate-100 shadow-[0_10px_40px_rgba(0,0,0,0.03)] outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-200 transition-all text-lg font-bold text-slate-700 placeholder:text-slate-300"
-                />
+        {/* Grid Header */}
+        <div className="mb-10 flex items-center justify-between px-2">
+           <div className="flex items-center gap-4">
+              <div className="w-10 h-10 rounded-2xl bg-blue-500/10 flex items-center justify-center text-blue-400 border border-blue-500/20">
+                {viewMode === 'store' ? <TrendingUp className="w-5 h-5" /> : <Library className="w-5 h-5" />}
               </div>
-
-              <div className="flex gap-2 p-2 bg-white rounded-[2rem] shadow-lg shadow-slate-100 border border-slate-50 w-full md:w-auto overflow-x-auto overflow-y-hidden custom-scrollbar">
-                {['All', 'PS5', 'PS4'].map((p) => (
-                  <button
-                    key={p}
-                    onClick={() => setFilterPlatform(p as any)}
-                    className={`px-10 py-4 rounded-2xl font-black text-sm uppercase tracking-widest transition-all ${
-                      filterPlatform === p 
-                      ? 'bg-blue-600 text-white shadow-xl shadow-blue-100' 
-                      : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'
-                    }`}
-                  >{p}</button>
-                ))}
+              <div>
+                <h2 className="text-xl font-black font-outfit uppercase tracking-tighter">
+                  {viewMode === 'store' ? 'Master Collection' : 'Private Storage'}
+                </h2>
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{filteredGames.length} Verified Entries</p>
               </div>
            </div>
-        </section>
+           
+           <div className="flex bg-white/5 p-1 rounded-xl border border-white/5">
+              <button 
+                onClick={() => setViewMode('store')}
+                className={`p-2 rounded-lg transition-all ${viewMode === 'store' ? 'bg-white text-black' : 'text-slate-500 hover:text-white'}`}
+              ><LayoutGrid className="w-4 h-4" /></button>
+              <button 
+                onClick={() => setViewMode('library')}
+                className={`p-2 rounded-lg transition-all ${viewMode === 'library' ? 'bg-white text-black' : 'text-slate-500 hover:text-white'}`}
+              ><Library className="w-4 h-4" /></button>
+           </div>
+        </div>
 
-        {/* Grid Container */}
+        {/* Dynamic Grid Rendering */}
         <section className="min-h-[600px]">
           {isLoading ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-12">
-              {[...Array(6)].map((_, i) => <SkeletonCard key={i} />)}
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-x-6 gap-y-12">
+              {[...Array(12)].map((_, i) => <SkeletonCard key={i} />)}
             </div>
           ) : filteredGames.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-12">
-              {filteredGames.map((game) => (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-x-6 gap-y-12">
+              {filteredGames.map(game => (
                 <GameCard 
-                  key={game.id}
-                  game={game} 
-                  onDownload={handleDownload}
-                  onReport={handleReport}
-                  isAdmin={user?.isAdmin}
-                  onEdit={(g) => { setEditingGame(g); setShowAdminPanel(true); }}
+                  key={game.id} game={game} 
+                  onDownload={handleDownload} onReport={handleReport}
+                  onWatchTrailer={g => setActiveTrailer(g)}
+                  isAdmin={user?.isAdmin} 
+                  isAuthenticated={!!user}
+                  onEdit={g => { setEditingGame(g); setShowAdminPanel(true); }}
                   isSaved={libraryIds.includes(game.id)}
                 />
               ))}
             </div>
           ) : (
-            <div className="py-32 text-center bg-white rounded-[4rem] border border-dashed border-slate-200">
-              <div className="w-24 h-24 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6 text-slate-300">
-                {viewMode === 'library' ? <Bookmark className="w-12 h-12" /> : <Gamepad2 className="w-12 h-12" />}
-              </div>
-              <h3 className="text-3xl font-black text-slate-800 font-outfit mb-2">
-                {viewMode === 'library' ? 'Your Library is Empty' : 'No Titles Found'}
-              </h3>
-              <p className="text-slate-400 font-medium">
-                {viewMode === 'library' ? 'Games you download will appear here for quick access.' : 'Try searching for something else or adjusting your filters.'}
-              </p>
+            <div className="py-40 text-center glass-panel rounded-[3rem] border border-white/5 animate-fade">
+              <Gamepad2 className="w-16 h-16 text-slate-800 mx-auto mb-6" />
+              <h3 className="text-2xl font-black font-outfit uppercase text-white mb-2">Registry Empty</h3>
+              <p className="text-slate-500 text-sm font-medium mb-10">No matching identifiers found in the current sector.</p>
               <button 
                 onClick={() => {setSearchQuery(''); setFilterPlatform('All'); setViewMode('store');}}
-                className="mt-8 text-blue-600 font-black hover:underline"
+                className="px-10 py-4 bg-blue-600 text-white rounded-[2rem] text-[11px] font-black uppercase tracking-widest hover:bg-blue-500 shadow-2xl shadow-blue-500/20 transition-all active:scale-95"
               >
-                {viewMode === 'library' ? 'Explore the Store' : 'Clear all filters'}
+                Reset Search Filters
               </button>
             </div>
           )}
         </section>
       </main>
 
-      <footer className="bg-white border-t border-slate-100 py-16 px-6 mt-20">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-8">
-           <div className="flex items-center gap-4">
-              <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white font-black font-outfit">P</div>
-              <div>
-                <p className="text-xl font-black text-slate-800 font-outfit">PlayFree</p>
-                <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest">Digital Gaming Repository</p>
-              </div>
+      {/* Footer - Minimal Sapphire */}
+      <footer className="bg-black/40 border-t border-white/5 py-16 px-6 mt-20">
+        <div className="max-w-7xl mx-auto flex flex-col items-center gap-6">
+           <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-white text-black rounded-xl flex items-center justify-center font-black text-sm">P</div>
+              <span className="text-lg font-black tracking-tighter uppercase font-outfit">PLAYFREE</span>
            </div>
-           <div className="flex gap-8 text-sm font-black text-slate-400 uppercase tracking-widest">
-             <a href="#" className="hover:text-blue-600 transition-colors">Privacy</a>
-             <a href="#" className="hover:text-blue-600 transition-colors">Safety</a>
-             <a href="#" className="hover:text-blue-600 transition-colors">Support</a>
+           <div className="flex gap-10 text-[10px] font-black text-slate-500 uppercase tracking-widest">
+              <a href="#" className="hover:text-blue-400 transition-colors">Manifesto</a>
+              <a href="#" className="hover:text-blue-400 transition-colors">Encryption Protocols</a>
+              <a href="#" className="hover:text-blue-400 transition-colors">Status</a>
            </div>
-           <p className="text-xs text-slate-400 font-medium">© {new Date().getFullYear()} PlayFree Media Group. All rights reserved.</p>
+           <p className="text-[9px] text-slate-700 font-black uppercase tracking-[0.5em] mt-4">
+             NON-COMMERCIAL RESEARCH DISTRIBUTION NODE • EST. 2024
+           </p>
         </div>
       </footer>
 
       {showAuthModal && <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} onLogin={u => setUser(u)} />}
       {showAdminPanel && <AdminPanel games={games} initialGame={editingGame} onUpdateGame={fetchGames} onAddGame={fetchGames} onClose={() => setShowAdminPanel(false)} />}
+      
+      {activeTrailer && (
+        <TrailerModal 
+          isOpen={!!activeTrailer} 
+          onClose={() => setActiveTrailer(null)} 
+          trailerUrl={activeTrailer.trailerUrl || ''} 
+          title={activeTrailer.title} 
+        />
+      )}
     </div>
   );
 };
+
+const App: React.FC = () => (
+  <ToastProvider>
+    <AppContent />
+  </ToastProvider>
+);
 
 export default App;

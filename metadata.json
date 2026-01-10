@@ -1,5 +1,5 @@
 {
-  "name": "PlayFree - PS4/PS5 Game Hub",
-  "description": "A high-performance, user-friendly game discovery and download platform for PlayStation 4 and 5 enthusiasts. Featuring a clean light design, administrative controls, and seamless animations.",
+  "name": "PlayFree - Real PS Store",
+  "description": "A production-grade PlayStation game hub using Supabase for secure auth, email verification, and persistent user libraries across devices.",
   "requestFramePermissions": []
 }

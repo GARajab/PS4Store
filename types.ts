@@ -14,10 +14,12 @@ export interface Game {
   description: string;
   imageUrl: string;
   downloadUrl: string;
+  trailerUrl?: string;
   platform: Platform;
   category: string;
   rating: number;
   download_count: number;
+  languages?: string[];
   updates?: GameUpdate[];
 }
 
