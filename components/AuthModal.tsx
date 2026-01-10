@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { X, LogIn, UserPlus, Gamepad2, Send, Shield, Activity, Fingerprint, RefreshCcw } from 'lucide-react';
+import { X, LogIn, UserPlus, Send, Fingerprint, RefreshCcw } from 'lucide-react';
 import { User } from '../types';
 import { supabase } from '../lib/supabase';
 import { PulseSpinner } from './LoadingSpinner';
@@ -23,21 +23,39 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }) => {
   const [connectionStatus, setConnectionStatus] = useState<'checking' | 'online' | 'offline'>('checking');
   const isMounted = useRef(true);
 
-  const checkConnection = useCallback(async (isRetry = false) => {
+  const checkConnection = useCallback(async () => {
     if (!isMounted.current) return;
     setConnectionStatus('checking');
-    try {
-      await new Promise(r => setTimeout(r, 400));
-      const { error } = await supabase.auth.getSession();
-      if (error) throw error;
-      if (isMounted.current) setConnectionStatus('online');
-    } catch (err: any) {
-      if (err.name === 'AbortError' || err.message?.includes('aborted')) {
-        return;
+
+    // Failsafe: If the session check takes more than 2.5 seconds, move out of 'checking' state
+    const timeout = setTimeout(() => {
+      if (isMounted.current && connectionStatus === 'checking') {
+        setConnectionStatus('offline');
       }
-      if (isMounted.current) setConnectionStatus('offline');
+    }, 2500);
+
+    try {
+      // Small artificial delay for visual feedback
+      await new Promise(r => setTimeout(r, 600));
+      
+      const { error } = await supabase.auth.getSession();
+      
+      if (isMounted.current) {
+        clearTimeout(timeout);
+        if (error) {
+          console.warn("[Auth] Session check returned error:", error.message);
+          setConnectionStatus('offline');
+        } else {
+          setConnectionStatus('online');
+        }
+      }
+    } catch (err: any) {
+      if (isMounted.current) {
+        clearTimeout(timeout);
+        setConnectionStatus('offline');
+      }
     }
-  }, []);
+  }, [connectionStatus]);
 
   useEffect(() => {
     isMounted.current = true;
@@ -52,8 +70,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (connectionStatus === 'offline') {
-      showToast('error', 'Gateway Offline', 'Check your connection to the PlayFree network.');
-      return;
+      showToast('warning', 'Gateway Latency', 'The connection to the authentication node is unstable. Attempting anyway...');
     }
     setLoading(true);
 
@@ -64,11 +81,11 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }) => {
         
         if (data.user) {
           if (!data.user.email_confirmed_at) {
-            showToast('warning', 'Awaiting Verification', 'Please confirm your identity via the sent link.');
+            showToast('warning', 'Verification Pending', 'Please check your email to activate your account.');
             await supabase.auth.signOut();
             return;
           }
-          showToast('success', 'Handshake Successful', `Welcome back, ${data.user.user_metadata?.username || 'Client'}.`);
+          showToast('success', 'Handshake OK', `Welcome back.`);
           onClose();
         }
       } else {
@@ -85,15 +102,15 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }) => {
         if (data.user) {
           if (!data.session) {
             setVerificationSent(true);
-            showToast('info', 'Encryption Key Sent', 'Verify your digital mailbox.');
+            showToast('info', 'Verification Dispatched', 'Check your mailbox to finalize node setup.');
           } else {
-            showToast('success', 'Node Established', 'Identity verified on the mainnet.');
+            showToast('success', 'Identity Established', 'Your profile is now active.');
             onClose();
           }
         }
       }
     } catch (err: any) {
-      showToast('error', 'Auth Exception', err.message);
+      showToast('error', 'Auth Signal Error', err.message);
     } finally {
       if (isMounted.current) setLoading(false);
     }
@@ -114,16 +131,16 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }) => {
             <div className="w-24 h-24 bg-[#0072ce]/10 text-[#0072ce] rounded-[2rem] flex items-center justify-center mx-auto mb-8 border border-[#0072ce]/10">
               <Send className="w-10 h-10" />
             </div>
-            <h3 className="text-2xl font-black text-slate-900 font-outfit mb-4 uppercase tracking-tighter">Transmission Sent</h3>
+            <h3 className="text-2xl font-black text-slate-900 font-outfit mb-4 uppercase tracking-tighter">Identity Confirmation</h3>
             <p className="text-slate-500 text-sm font-medium mb-10 leading-relaxed">
-              An encrypted verification sequence has been dispatched to <br/>
+              We've sent an encrypted link to:<br/>
               <span className="text-[#0072ce] font-bold">{email}</span>
             </p>
             <button 
               onClick={() => setVerificationSent(false)}
               className="w-full bg-[#0072ce] text-white font-black py-5 rounded-2xl hover:bg-[#005bb8] transition-all shadow-xl active:scale-95 text-xs tracking-widest uppercase"
             >
-              Return to Gateway
+              Return to Login
             </button>
           </div>
         ) : (
@@ -142,18 +159,18 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }) => {
               <form onSubmit={handleSubmit} className="space-y-6">
                 {!isLogin && (
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest ml-1">Identity ID</label>
+                    <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest ml-1">Username</label>
                     <input 
                       type="text" required value={username} 
                       onChange={e => setUsername(e.target.value)}
                       className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:bg-white focus:border-[#0072ce] outline-none text-slate-900 font-bold text-sm placeholder:text-slate-300 transition-all"
-                      placeholder="PLAYER_ALPHA"
+                      placeholder="PLAYER_ID"
                     />
                   </div>
                 )}
                 
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest ml-1">Digital Mailbox</label>
+                  <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest ml-1">Email Address</label>
                   <input 
                     type="email" required value={email} onChange={e => setEmail(e.target.value)}
                     className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:bg-white focus:border-[#0072ce] outline-none text-slate-900 font-bold text-sm placeholder:text-slate-300 transition-all"
@@ -162,7 +179,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }) => {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest ml-1">Secret Key</label>
+                  <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest ml-1">Password</label>
                   <input 
                     type="password" required value={password} onChange={e => setPassword(e.target.value)}
                     className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:bg-white focus:border-[#0072ce] outline-none text-slate-900 font-bold text-sm placeholder:text-slate-300 transition-all"
@@ -174,7 +191,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }) => {
                   type="submit" disabled={loading || connectionStatus === 'checking'}
                   className="w-full bg-[#0072ce] hover:bg-[#005bb8] text-white font-black py-5 rounded-[2rem] mt-4 transition-all active:scale-95 disabled:opacity-50 flex justify-center items-center gap-3 shadow-2xl shadow-blue-500/10 text-xs tracking-widest uppercase"
                 >
-                  {loading ? <PulseSpinner /> : (isLogin ? <LogIn className="w-5 h-5" /> : <UserPlus className="w-5 h-5" />)}
+                  {loading ? <PulseSpinner /> : <LogIn className="w-5 h-5" />}
                   <span>{isLogin ? 'Authorize' : 'Register'}</span>
                 </button>
               </form>
@@ -184,18 +201,18 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }) => {
                   onClick={() => setIsLogin(!isLogin)}
                   className="text-[10px] text-[#0072ce] font-black uppercase tracking-widest hover:text-slate-900 transition-colors"
                 >
-                  {isLogin ? "No Identity? Build Node" : "Member? Access Gateway"}
+                  {isLogin ? "Build New Identity" : "Member? Access Gateway"}
                 </button>
                 
                 <div className="flex flex-col items-center gap-3">
-                   <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-slate-50 border border-slate-200 group">
-                      <div className={`w-1.5 h-1.5 rounded-full transition-colors ${
+                   <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-slate-50 border border-slate-200">
+                      <div className={`w-1.5 h-1.5 rounded-full ${
                         connectionStatus === 'online' ? 'bg-[#0072ce] animate-pulse' : 
                         connectionStatus === 'checking' ? 'bg-amber-400 animate-spin' : 'bg-red-400'
                       }`} />
                       <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">
-                        {connectionStatus === 'online' ? 'Network Online' : 
-                         connectionStatus === 'checking' ? 'Verifying Link...' : 'Node Offline'}
+                        {connectionStatus === 'online' ? 'Cloud Link Active' : 
+                         connectionStatus === 'checking' ? 'Synchronizing...' : 'Offline Protocol'}
                       </span>
                       {connectionStatus === 'offline' && (
                         <button 

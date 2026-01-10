@@ -1,52 +1,48 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-// Master fallback credentials
+// Hardcoded fallback credentials for the Master Archive
 const MASTER_URL = 'https://vzngccbrzlznlbfmdnzg.supabase.co';
 const MASTER_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ6bmdjY2Jyemx6bmxiZm1kbnpnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc4MTE3MzcsImV4cCI6MjA4MzM4NzczN30.OA4RxQg6rg6P38EHJX0eqwWcpcqLTbhDUr0iKSU76Aw';
 
 /**
- * Robust environment variable retriever
- * Works across Vite dev, Vite build, and various deployment environments (Vercel/Netlify)
+ * Safe environment variable retrieval.
+ * Prioritizes Vite's injection, then fallbacks to process.env, then the Master Archive.
  */
-const getEnv = (key: string, defaultValue: string): string => {
-  // 1. Try Vite's import.meta.env first (Standard for Vite apps)
+const getSafeEnv = (key: string, fallback: string): string => {
+  // 1. Check Vite's import.meta.env
   try {
     // @ts-ignore
-    const metaEnv = typeof import.meta !== 'undefined' ? import.meta.env : null;
-    if (metaEnv) {
-      const val = metaEnv[key] || metaEnv[`VITE_${key}`];
-      if (val && val !== 'undefined' && val !== 'null') return val;
-    }
+    const val = import.meta.env?.[key] || import.meta.env?.[`VITE_${key}`];
+    if (val && val !== 'undefined') return val;
   } catch (e) {}
 
-  // 2. Try global process.env (Vercel/Node environment fallback)
+  // 2. Check global process.env (Vercel/Node fallback)
   try {
     // @ts-ignore
-    if (typeof process !== 'undefined' && process.env) {
-      const val = process.env[key] || process.env[`VITE_${key}`];
-      if (val && val !== 'undefined' && val !== 'null') return val;
-    }
+    const val = typeof process !== 'undefined' && process.env ? (process.env[key] || process.env[`VITE_${key}`]) : null;
+    if (val && val !== 'undefined') return val;
   } catch (e) {}
 
-  // 3. Last resort: Return provided default
-  return defaultValue;
+  // 3. Check global window.process (defined in index.html)
+  try {
+    // @ts-ignore
+    const val = window.process?.env?.[key] || window.process?.env?.[`VITE_${key}`];
+    if (val && val !== 'undefined') return val;
+  } catch (e) {}
+
+  return fallback;
 };
 
-const supabaseUrl = getEnv('SUPABASE_URL', MASTER_URL);
-const supabaseAnonKey = getEnv('SUPABASE_ANON_KEY', MASTER_KEY);
-
-console.debug(`[Supabase] Initializing with Endpoint: ${supabaseUrl.substring(0, 15)}...`);
+const supabaseUrl = getSafeEnv('SUPABASE_URL', MASTER_URL);
+const supabaseAnonKey = getSafeEnv('SUPABASE_ANON_KEY', MASTER_KEY);
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: true,
-    storageKey: 'playfree-vault-auth-v3',
+    storageKey: 'playfree-vault-auth-v4', // Incremented version to clear any corrupt local storage
     flowType: 'pkce'
-  },
-  global: {
-    headers: { 'x-application-name': 'playfree-v2' }
   }
 });
