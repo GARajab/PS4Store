@@ -28,12 +28,10 @@ const AppContent: React.FC = () => {
   const [libraryIds, setLibraryIds] = useState<string[]>([]);
   const [activeTrailer, setActiveTrailer] = useState<Game | null>(null);
 
-  const isBooted = useRef(false);
-  const authInitialized = useRef(false);
+  const initialLoadCompleted = useRef(false);
 
   /**
    * RECOVER USER PROFILE
-   * Fetches administrative metadata for the authenticated user.
    */
   const getFullUser = useCallback(async (sbUser: any): Promise<User> => {
     try {
@@ -61,25 +59,24 @@ const AppContent: React.FC = () => {
 
   /**
    * SYNC USER DATA
-   * Loads library and other user-specific context.
    */
-  const syncUserContext = useCallback(async (fullUser: User) => {
+  const syncUserContext = useCallback(async (userId: string) => {
     try {
       const { data: libData } = await supabase
         .from('user_library')
         .select('game_id')
-        .eq('user_id', fullUser.id);
+        .eq('user_id', userId);
       
       if (libData) {
         setLibraryIds(libData.map(item => item.game_id));
       }
     } catch (e) {
-      console.error("[Sync] Failed to load user library:", e);
+      console.warn("[Sync] User library sync deferred.");
     }
   }, []);
 
   /**
-   * FETCH GLOBAL CONTENT
+   * FETCH CONTENT
    */
   const fetchGames = useCallback(async () => {
     try {
@@ -89,7 +86,9 @@ const AppContent: React.FC = () => {
         .order('download_count', { ascending: false });
 
       if (error) {
-        if (error.code === '42P01' || error.message?.includes('does not exist')) {
+        // If table doesn't exist, this is a connectivity/setup issue
+        if (error.code === '42P01') {
+          setFetchError("Database tables not found. Please run the SQL setup in Admin Panel.");
           setGames([]);
         } else {
           throw error;
@@ -99,85 +98,62 @@ const AppContent: React.FC = () => {
         setFetchError(null);
       }
     } catch (err: any) {
-      if (err.name === 'AbortError' || err.message?.includes('aborted')) {
-        return;
+      if (err.name !== 'AbortError') {
+        setFetchError(err.message || "Cloud connection refused.");
       }
-      setFetchError(err.message || "Failed to synchronize with the game repository.");
     }
   }, []);
 
   /**
-   * MAIN INITIALIZATION
-   */
-  const initializeApp = useCallback(async () => {
-    if (isBooted.current) return;
-    setIsLoading(true);
-
-    try {
-      // 1. Initial Session Check (Immediate)
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (session?.user && !authInitialized.current) {
-        const fullUser = await getFullUser(session.user);
-        setUser(fullUser);
-        await syncUserContext(fullUser);
-        authInitialized.current = true;
-      }
-
-      // 2. Load Registry
-      await fetchGames();
-      
-      // 3. Load Reports metadata (for Admins)
-      if (user?.isAdmin) {
-        const { count } = await supabase
-          .from('reports')
-          .select('*', { count: 'exact', head: true })
-          .eq('status', 'pending');
-        setReportCount(count || 0);
-      }
-
-      isBooted.current = true;
-    } catch (err: any) {
-      console.error("[Init] System fault during boot:", err);
-      if (!(err.name === 'AbortError' || err.message?.includes('aborted'))) {
-        setFetchError("Master connection interrupted. Retrying...");
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  }, [fetchGames, getFullUser, syncUserContext, user?.isAdmin]);
-
-  /**
-   * AUTH LISTENER
-   * Handles session recovery, sign-ins, and sign-outs.
+   * MAIN AUTH OBSERVER
+   * This is the primary driver for the app lifecycle
    */
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log(`[Auth] Event: ${event}`);
+      console.log(`[AuthSystem] Event: ${event}`);
       
       if (session?.user) {
         const fullUser = await getFullUser(session.user);
         setUser(fullUser);
-        await syncUserContext(fullUser);
-        authInitialized.current = true;
+        await syncUserContext(fullUser.id);
+        
+        if (fullUser.isAdmin) {
+          const { count } = await supabase
+            .from('reports')
+            .select('*', { count: 'exact', head: true })
+            .eq('status', 'pending');
+          setReportCount(count || 0);
+        }
       } else {
         setUser(null);
         setLibraryIds([]);
-        setViewMode('store');
-        authInitialized.current = false;
       }
 
-      // If this is the initial session detection, we can stop the loading spinner
-      if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN') {
+      // Once the initial session check or any subsequent event fires, 
+      // we can attempt to load the games if not already loaded
+      if (!initialLoadCompleted.current) {
+        await fetchGames();
+        initialLoadCompleted.current = true;
         setIsLoading(false);
       }
     });
 
-    // Run the main app initialization
-    initializeApp();
+    // Fallback: If auth listener doesn't trigger INITIAL_SESSION within 3 seconds,
+    // we force load the games anyway to avoid an infinite spinner.
+    const timeout = setTimeout(() => {
+      if (!initialLoadCompleted.current) {
+        fetchGames().finally(() => {
+          initialLoadCompleted.current = true;
+          setIsLoading(false);
+        });
+      }
+    }, 3000);
 
-    return () => subscription.unsubscribe();
-  }, [initializeApp, getFullUser, syncUserContext]);
+    return () => {
+      subscription.unsubscribe();
+      clearTimeout(timeout);
+    };
+  }, [fetchGames, getFullUser, syncUserContext]);
 
   const handleDownload = async (game: Game) => {
     if (!user) {
@@ -269,7 +245,7 @@ const AppContent: React.FC = () => {
         </div>
 
         <section className="min-h-[700px]">
-          {isLoading && games.length === 0 ? (
+          {isLoading ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-10">
               {[...Array(10)].map((_, i) => <SkeletonCard key={i} />)}
             </div>
@@ -279,7 +255,7 @@ const AppContent: React.FC = () => {
               <h3 className="text-3xl font-black font-outfit uppercase text-red-600 mb-3 tracking-tighter">Gateway Idle</h3>
               <p className="text-slate-500 text-lg font-medium mb-12 max-w-md mx-auto">{fetchError}</p>
               <button 
-                onClick={() => { isBooted.current = false; initializeApp(); }}
+                onClick={() => { initialLoadCompleted.current = false; setIsLoading(true); fetchGames().finally(() => setIsLoading(false)); }}
                 className="px-12 py-5 bg-[#0072ce] text-white rounded-full text-[12px] font-black uppercase tracking-widest active:scale-95 shadow-xl hover:bg-[#005bb8] transition-all flex items-center justify-center gap-3 mx-auto"
               >
                 <RefreshCw className="w-4 h-4" /> Reset Connection
@@ -306,7 +282,7 @@ const AppContent: React.FC = () => {
               <p className="text-slate-400 text-lg font-medium mb-12">The digital vault is currently empty or offline.</p>
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                 <button 
-                  onClick={() => { isBooted.current = false; initializeApp(); }}
+                  onClick={() => { fetchGames(); }}
                   className="px-12 py-5 btn-primary rounded-full text-[12px] font-black uppercase tracking-widest active:scale-95"
                 >
                   Force Handshake
