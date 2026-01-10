@@ -28,9 +28,7 @@ const AppContent: React.FC = () => {
   const [libraryIds, setLibraryIds] = useState<string[]>([]);
   const [activeTrailer, setActiveTrailer] = useState<Game | null>(null);
 
-  const initLock = useRef(false);
-  const fetchLock = useRef(false);
-  const abortRetryCount = useRef(0);
+  const isBooted = useRef(false);
 
   const getFullUser = async (sbUser: any): Promise<User> => {
     try {
@@ -57,9 +55,6 @@ const AppContent: React.FC = () => {
   };
 
   const fetchGames = useCallback(async () => {
-    if (fetchLock.current) return;
-    fetchLock.current = true;
-
     try {
       const { data, error } = await supabase
         .from('games')
@@ -77,61 +72,57 @@ const AppContent: React.FC = () => {
         setFetchError(null);
       }
     } catch (err: any) {
-      const isAbort = err.name === 'AbortError' || err.message?.includes('aborted');
-      if (isAbort) {
-        console.debug("[Sync] Supabase signal aborted. Retrying connection...");
-        if (abortRetryCount.current < 3) {
-          abortRetryCount.current++;
-          setTimeout(() => { fetchLock.current = false; fetchGames(); }, 500);
-        }
+      if (err.name === 'AbortError' || err.message?.includes('aborted')) {
+        console.debug("[App] Fetch aborted, skipping error state.");
         return;
       }
-      console.error("[Sync] Critical connection failure:", err);
-      setFetchError(err.message || "Archive handshake interrupted.");
-    } finally {
-      setIsLoading(false);
-      fetchLock.current = false;
+      setFetchError(err.message || "Failed to synchronize with the game repository.");
     }
   }, []);
 
   const initializeApp = useCallback(async () => {
-    if (initLock.current) return;
-    initLock.current = true;
-    
+    if (isBooted.current) return;
     setIsLoading(true);
     
+    // DELAYED BOOT: Wait for browser stability on production domains
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
     try {
-      // 1. Session Recovery with silence for AbortErrors
-      const sessionResult = await supabase.auth.getSession().catch(err => {
-        if (err.name === 'AbortError' || err.message?.includes('aborted')) return { data: { session: null }, error: null };
-        throw err;
-      });
-      
-      const session = sessionResult?.data?.session;
+      // 1. Session check
+      let session = null;
+      try {
+        const { data } = await supabase.auth.getSession();
+        session = data.session;
+      } catch (e) {
+        console.debug("[Init] Auth session check bypassed due to handshake error.");
+      }
+
       if (session?.user) {
         const fullUser = await getFullUser(session.user);
         setUser(fullUser);
-        const { data: libData } = await supabase.from('user_library').select('game_id').eq('user_id', fullUser.id);
-        if (libData) setLibraryIds(libData.map(item => item.game_id));
+        try {
+          const { data: libData } = await supabase.from('user_library').select('game_id').eq('user_id', fullUser.id);
+          if (libData) setLibraryIds(libData.map(item => item.game_id));
+        } catch (e) {}
       }
 
-      // 2. Load Registry
+      // 2. Load Content
       await fetchGames();
       
-      // 3. Supplemental metadata
+      // 3. Reports
       try {
         const { count } = await supabase.from('reports').select('*', { count: 'exact', head: true }).eq('status', 'pending');
         setReportCount(count || 0);
       } catch (e) {}
 
+      isBooted.current = true;
     } catch (err: any) {
-      if (err.name === 'AbortError' || err.message?.includes('aborted')) {
-        initLock.current = false; // Allow retry
-        return;
+      console.error("[Init] System fault during boot:", err);
+      if (!(err.name === 'AbortError' || err.message?.includes('aborted'))) {
+        setFetchError("Master connection interrupted. Retrying...");
       }
-      console.error("[Init] System fault:", err);
-      setFetchError("Master gateway offline. Protocol reset required.");
     } finally {
+      // ABSOLUTE GUARANTEE: Remove loading screen
       setIsLoading(false);
     }
   }, [fetchGames]);
@@ -144,8 +135,10 @@ const AppContent: React.FC = () => {
         if (session?.user) {
           const fullUser = await getFullUser(session.user);
           setUser(fullUser);
-          const { data: libData } = await supabase.from('user_library').select('game_id').eq('user_id', fullUser.id);
-          if (libData) setLibraryIds(libData.map(item => item.game_id));
+          try {
+            const { data: libData } = await supabase.from('user_library').select('game_id').eq('user_id', fullUser.id);
+            if (libData) setLibraryIds(libData.map(item => item.game_id));
+          } catch (e) {}
         }
       } else if (event === 'SIGNED_OUT') {
         setUser(null);
@@ -165,21 +158,11 @@ const AppContent: React.FC = () => {
 
     try {
       if (!libraryIds.includes(game.id)) {
-        const { error: libError } = await supabase
-          .from('user_library')
-          .insert([{ user_id: user.id, game_id: game.id }]);
-        
-        if (!libError) setLibraryIds(prev => [...prev, game.id]);
+        await supabase.from('user_library').insert([{ user_id: user.id, game_id: game.id }]);
+        setLibraryIds(prev => [...prev, game.id]);
       }
-
-      const { error: countError } = await supabase
-        .from('games')
-        .update({ download_count: (game.download_count || 0) + 1 })
-        .eq('id', game.id);
-
-      if (!countError) {
-        setGames(prev => prev.map(g => g.id === game.id ? { ...g, download_count: (g.download_count || 0) + 1 } : g));
-      }
+      await supabase.from('games').update({ download_count: (game.download_count || 0) + 1 }).eq('id', game.id);
+      setGames(prev => prev.map(g => g.id === game.id ? { ...g, download_count: (g.download_count || 0) + 1 } : g));
     } catch (e) {}
 
     window.open(game.downloadUrl, '_blank');
@@ -263,13 +246,13 @@ const AppContent: React.FC = () => {
           ) : fetchError ? (
             <div className="py-40 text-center glass-panel rounded-[4rem] border border-red-100 animate-fade bg-red-50/30">
               <WifiOff className="w-20 h-20 text-red-200 mx-auto mb-8" />
-              <h3 className="text-3xl font-black font-outfit uppercase text-red-600 mb-3 tracking-tighter">Sync Interrupted</h3>
+              <h3 className="text-3xl font-black font-outfit uppercase text-red-600 mb-3 tracking-tighter">Gateway Idle</h3>
               <p className="text-slate-500 text-lg font-medium mb-12 max-w-md mx-auto">{fetchError}</p>
               <button 
-                onClick={() => { initLock.current = false; initializeApp(); }}
+                onClick={() => { isBooted.current = false; initializeApp(); }}
                 className="px-12 py-5 bg-[#0072ce] text-white rounded-full text-[12px] font-black uppercase tracking-widest active:scale-95 shadow-xl hover:bg-[#005bb8] transition-all flex items-center justify-center gap-3 mx-auto"
               >
-                <RefreshCw className="w-4 h-4" /> Re-Sync Hub
+                <RefreshCw className="w-4 h-4" /> Reset Connection
               </button>
             </div>
           ) : filteredGames.length > 0 ? (
@@ -289,21 +272,21 @@ const AppContent: React.FC = () => {
           ) : (
             <div className="py-40 text-center glass-panel rounded-[4rem] border border-slate-100 animate-fade">
               <Database className="w-20 h-20 text-slate-100 mx-auto mb-8" />
-              <h3 className="text-3xl font-black font-outfit uppercase text-[#0072ce] mb-3 tracking-tighter">Registry Empty</h3>
-              <p className="text-slate-400 text-lg font-medium mb-12">No active archival signatures found.</p>
+              <h3 className="text-3xl font-black font-outfit uppercase text-[#0072ce] mb-3 tracking-tighter">No Active Signals</h3>
+              <p className="text-slate-400 text-lg font-medium mb-12">The digital vault is currently empty or offline.</p>
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                 <button 
-                  onClick={() => { initLock.current = false; initializeApp(); }}
+                  onClick={() => { isBooted.current = false; initializeApp(); }}
                   className="px-12 py-5 btn-primary rounded-full text-[12px] font-black uppercase tracking-widest active:scale-95"
                 >
-                  Force Refresh
+                  Force Handshake
                 </button>
                 {(!user || user?.isAdmin) && (
                    <button 
                     onClick={() => { if (!user) setShowAuthModal(true); else setShowAdminPanel(true); }}
                     className="px-12 py-5 bg-white border border-slate-200 text-slate-900 rounded-full text-[12px] font-black uppercase tracking-widest active:scale-95"
                   >
-                    Setup Registry
+                    Setup Hub
                   </button>
                 )}
               </div>
@@ -320,13 +303,13 @@ const AppContent: React.FC = () => {
                 <span className="text-2xl font-black tracking-tighter uppercase font-outfit text-[#0072ce]">PLAYFREE</span>
               </div>
               <p className="text-slate-500 text-base font-bold max-w-sm">
-                Archival preservation gateway for digital entertainment history.
+                Next-gen archival gateway for PlayStation history.
               </p>
            </div>
            <div className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-full shadow-sm">
              <Activity className={`w-3.5 h-3.5 ${fetchError ? 'text-amber-500' : 'text-emerald-500'}`} />
              <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">
-               {fetchError ? 'Limited Signal' : 'Secure Handshake'}
+               {fetchError ? 'Sync Latency' : 'Secure Vault Active'}
              </span>
            </div>
         </div>
