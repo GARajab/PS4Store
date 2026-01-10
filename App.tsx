@@ -20,7 +20,6 @@ const AppContent: React.FC = () => {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [editingGame, setEditingGame] = useState<Game | null>(null);
-  const [isBooting, setIsBooting] = useState(true);
   const [isLoadingGames, setIsLoadingGames] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [reportCount, setReportCount] = useState(0);
@@ -28,84 +27,56 @@ const AppContent: React.FC = () => {
   const [libraryIds, setLibraryIds] = useState<string[]>([]);
   const [activeTrailer, setActiveTrailer] = useState<Game | null>(null);
 
-  // Background sync - purely optional data, doesn't block UI
-  const syncBackgroundData = useCallback(async (sbUser: any) => {
+  const syncProfile = useCallback(async (sbUser: any) => {
     if (!sbUser) return;
-    try {
-      const [{ data: profile }, { data: library }] = await Promise.all([
-        supabase.from('profiles').select('*').eq('id', sbUser.id).maybeSingle(),
-        supabase.from('user_library').select('game_id').eq('user_id', sbUser.id)
-      ]);
+    setUser({
+      id: sbUser.id,
+      username: sbUser.user_metadata?.username || sbUser.email?.split('@')[0] || 'Player',
+      email: sbUser.email || '',
+      isAdmin: sbUser.email?.toLowerCase().includes('admin') || false,
+    });
 
+    try {
+      const { data: profile } = await supabase.from('profiles').select('*').eq('id', sbUser.id).maybeSingle();
       if (profile) {
         setUser(prev => prev ? { ...prev, username: profile.username || prev.username, isAdmin: !!profile.is_admin } : null);
-        if (profile.is_admin) {
-          const { count } = await supabase.from('reports').select('*', { count: 'exact', head: true }).eq('status', 'pending');
-          setReportCount(count || 0);
-        }
       }
+      const { data: library } = await supabase.from('user_library').select('game_id').eq('user_id', sbUser.id);
       if (library) setLibraryIds(library.map(i => i.game_id));
-    } catch (e) {
-      console.warn("Silent background sync failed.");
-    }
+    } catch (e) {}
   }, []);
 
   const fetchGames = useCallback(async () => {
     setIsLoadingGames(true);
     try {
-      const { data, error } = await supabase.from('games').select('*').order('download_count', { ascending: false });
+      const { data, error } = await supabase.from('games').select('*').order('title', { ascending: true });
       if (error) throw error;
       setGames(data || []);
       setFetchError(null);
     } catch (err: any) {
-      setFetchError("Database link timed out.");
+      setFetchError("Database connection pending...");
     } finally {
       setIsLoadingGames(false);
     }
   }, []);
 
-  // FAST BOOT: Priority is showing the UI
   useEffect(() => {
-    const init = async () => {
-      // 1. Get session immediately from storage
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (session?.user) {
-        // Optimistically set user from session meta
-        setUser({
-          id: session.user.id,
-          username: session.user.user_metadata?.username || session.user.email?.split('@')[0] || 'User',
-          email: session.user.email || '',
-          isAdmin: session.user.email?.toLowerCase().includes('admin') || false
-        });
-        syncBackgroundData(session.user);
-      }
-      
-      // 2. Hide loader immediately
-      setIsBooting(false);
-      fetchGames();
-    };
-
-    init();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session?.user) {
-        setUser({
-          id: session.user.id,
-          username: session.user.user_metadata?.username || session.user.email?.split('@')[0] || 'User',
-          email: session.user.email || '',
-          isAdmin: session.user.email?.toLowerCase().includes('admin') || false
-        });
-        syncBackgroundData(session.user);
-      } else if (event === 'SIGNED_OUT') {
-        setUser(null);
-        setLibraryIds([]);
-      }
-      setIsBooting(false);
+    // 1. Immediate Session Check
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) syncProfile(session.user);
     });
 
+    // 2. Auth Listener
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) syncProfile(session.user);
+      else { setUser(null); setLibraryIds([]); }
+    });
+
+    // 3. Initial Fetch
+    fetchGames();
+
     return () => subscription.unsubscribe();
-  }, [fetchGames, syncBackgroundData]);
+  }, [fetchGames, syncProfile]);
 
   const handleDownload = async (game: Game) => {
     if (!user) { setShowAuthModal(true); return; }
@@ -113,7 +84,7 @@ const AppContent: React.FC = () => {
       if (!libraryIds.includes(game.id)) {
         await supabase.from('user_library').insert([{ user_id: user.id, game_id: game.id }]);
         setLibraryIds(prev => [...prev, game.id]);
-        showToast('success', 'Sync Complete', 'Title archived to library.');
+        showToast('success', 'Library Sync', 'Game added to collection.');
       }
       window.open(game.downloadUrl, '_blank');
     } catch (e) {}
@@ -128,14 +99,6 @@ const AppContent: React.FC = () => {
     });
   }, [games, searchQuery, filterPlatform, viewMode, libraryIds]);
 
-  if (isBooting) {
-    return (
-      <div className="fixed inset-0 bg-white flex flex-col items-center justify-center z-[1000]">
-        <LogoSpinner />
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen flex flex-col bg-white">
       <Navbar 
@@ -148,26 +111,30 @@ const AppContent: React.FC = () => {
       />
 
       <main className="flex-grow pt-32 pb-20 px-6 max-w-7xl mx-auto w-full">
-        <div className="mb-12 flex items-center justify-between">
+        <div className="mb-12 flex flex-col md:flex-row md:items-end justify-between gap-6">
            <div>
-             <h1 className="text-4xl font-black font-outfit uppercase tracking-tighter text-[#0072ce]">
-               {viewMode === 'store' ? 'Digital Vault' : 'Your Collection'}
+             <h1 className="text-5xl font-black font-outfit uppercase tracking-tighter text-[#0072ce] leading-none mb-3">
+               {viewMode === 'store' ? 'Digital Vault' : 'My Archive'}
              </h1>
-             <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.3em]">Protocol Active</p>
+             <p className="text-slate-400 text-[11px] font-black uppercase tracking-[0.4em]">Official PlayStation Repository</p>
            </div>
-           <div className="flex bg-slate-100 p-1 rounded-2xl">
+           
+           <div className="flex bg-slate-100 p-1.5 rounded-[1.5rem]">
             {['All', 'PS5', 'PS4'].map(p => (
               <button key={p} onClick={() => setFilterPlatform(p as any)}
-                className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${filterPlatform === p ? 'bg-white text-[#0072ce] shadow-sm' : 'text-slate-400'}`}
+                className={`px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${filterPlatform === p ? 'bg-white text-[#0072ce] shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
               >{p}</button>
             ))}
           </div>
         </div>
 
-        <div className="mb-12 relative">
-           <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-           <input type="text" placeholder="QUERY CATALOG..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-             className="w-full pl-12 pr-6 py-4 bg-slate-100 rounded-2xl font-bold text-xs uppercase tracking-widest outline-none focus:ring-2 ring-[#0072ce]/10 transition-all" />
+        <div className="mb-12 relative group">
+           <Search className="absolute left-6 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300 group-focus-within:text-[#0072ce] transition-colors" />
+           <input 
+             type="text" placeholder="SEARCH TITLES..." 
+             value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+             className="w-full pl-16 pr-8 py-5 bg-slate-50 border border-slate-100 rounded-[2rem] font-bold text-sm uppercase tracking-widest outline-none focus:bg-white focus:ring-4 ring-[#0072ce]/5 transition-all shadow-sm" 
+           />
         </div>
 
         {isLoadingGames ? (
@@ -175,13 +142,18 @@ const AppContent: React.FC = () => {
             {[...Array(10)].map((_, i) => <SkeletonCard key={i} />)}
           </div>
         ) : fetchError ? (
-          <div className="text-center py-20 bg-slate-50 rounded-[3rem] border border-slate-100">
-            <WifiOff className="w-10 h-10 text-slate-200 mx-auto mb-4" />
-            <p className="text-slate-400 font-black uppercase text-[10px] tracking-widest">{fetchError}</p>
-            <button onClick={fetchGames} className="mt-6 px-8 py-3 bg-[#0072ce] text-white rounded-xl text-[10px] font-black uppercase tracking-widest">Retry Connection</button>
+          <div className="text-center py-32 bg-slate-50 rounded-[4rem] border border-slate-100 border-dashed">
+            <WifiOff className="w-12 h-12 text-slate-200 mx-auto mb-6" />
+            <p className="text-slate-400 font-black uppercase text-[10px] tracking-[0.3em] mb-8">{fetchError}</p>
+            <button onClick={fetchGames} className="px-10 py-4 bg-[#0072ce] text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-blue-500/20 active:scale-95 transition-all">Reconnect to Vault</button>
+          </div>
+        ) : filteredGames.length === 0 ? (
+          <div className="text-center py-32">
+            <Database className="w-16 h-16 text-slate-100 mx-auto mb-6" />
+            <h3 className="text-xl font-black text-slate-300 uppercase tracking-widest">No Matches Found</h3>
           </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-x-6 gap-y-10">
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-x-8 gap-y-12">
             {filteredGames.map(game => (
               <GameCard key={game.id} game={game} onDownload={handleDownload} onWatchTrailer={g => setActiveTrailer(g)}
                 isAdmin={user?.isAdmin} isAuthenticated={!!user} isSaved={libraryIds.includes(game.id)} onReport={async () => true} />
@@ -189,6 +161,16 @@ const AppContent: React.FC = () => {
           </div>
         )}
       </main>
+
+      <footer className="py-20 border-t border-slate-100 bg-slate-50/50">
+        <div className="max-w-7xl mx-auto px-6 flex flex-col items-center">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.5em]">Global Nodes Synchronized</span>
+          </div>
+          <p className="text-slate-300 text-[9px] font-bold uppercase tracking-widest">&copy; 2024 PlayFree Digital Systems</p>
+        </div>
+      </footer>
 
       {showAuthModal && <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} onLogin={() => {}} />}
       {showAdminPanel && <AdminPanel games={games} onUpdateGame={fetchGames} onAddGame={fetchGames} onClose={() => setShowAdminPanel(false)} />}
