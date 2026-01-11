@@ -119,18 +119,24 @@ const AppContent: React.FC = () => {
     });
   }, [games, searchQuery, filterPlatform, viewMode, libraryIds]);
 
-  // CRITICAL: Resets everything to show ALL games in the DB
+  // Resets to showing EVERYTHING in the store
   const resetToFullStore = () => {
     setSearchQuery('');
     setFilterPlatform('All');
     setViewMode('store');
-    showToast('info', 'Filters Cleared', 'Displaying full digital vault.');
+    showToast('info', 'System Reset', 'Displaying full digital vault.');
   };
 
-  // When clicking platform tabs, we ALWAYS want to be in store mode to see ALL games of that platform
+  // Switch to Library view (Collection) and show all owned games by default
+  const enterLibrary = () => {
+    setViewMode('library');
+    setFilterPlatform('All');
+    setSearchQuery('');
+  };
+
+  // Platform filters now respect current view mode (Collection vs Store)
   const handlePlatformFilter = (p: Platform | 'All') => {
     setFilterPlatform(p);
-    setViewMode('store'); 
   };
 
   const isLibraryEmpty = viewMode === 'library' && libraryIds.length === 0;
@@ -146,7 +152,7 @@ const AppContent: React.FC = () => {
           showToast('info', 'Disconnected', 'Node session terminated.');
         }}
         onAdminClick={() => setShowAdminPanel(true)}
-        onLibraryClick={() => { setViewMode('library'); setFilterPlatform('All'); }}
+        onLibraryClick={enterLibrary}
         onHomeClick={resetToFullStore}
       />
 
@@ -156,21 +162,21 @@ const AppContent: React.FC = () => {
            <div className="animate-fade">
              <div className="flex items-center gap-4 mb-3">
                <h1 className="text-5xl font-black font-outfit uppercase tracking-tighter text-[#0072ce] leading-none">
-                 {viewMode === 'store' ? 'Digital Vault' : 'My Archive'}
+                 {viewMode === 'store' ? 'Digital Vault' : 'My Collection'}
                </h1>
                {viewMode === 'library' && (
                  <button 
                    onClick={resetToFullStore}
                    className="mt-1 flex items-center gap-2 px-4 py-1.5 bg-[#0072ce]/5 hover:bg-[#0072ce] text-[#0072ce] hover:text-white rounded-full text-[9px] font-black uppercase tracking-widest transition-all border border-[#0072ce]/10 shadow-sm"
                  >
-                   <RotateCcw className="w-3 h-3" /> Back to Store
+                   <RotateCcw className="w-3 h-3" /> Reset Filter
                  </button>
                )}
              </div>
              <p className="text-slate-400 text-[11px] font-black uppercase tracking-[0.4em]">
                {viewMode === 'store' 
-                 ? (filterPlatform === 'All' ? 'Official PlayStation Repository' : `Browsing ${filterPlatform} Collection`) 
-                 : `Viewing ${filteredGames.length} Owned Titles`}
+                 ? (filterPlatform === 'All' ? 'Official PlayStation Repository' : `Browsing ${filterPlatform} Catalog`) 
+                 : (filterPlatform === 'All' ? `All Downloaded Games (${libraryIds.length})` : `My ${filterPlatform} Collection`)}
              </p>
            </div>
            
@@ -180,7 +186,7 @@ const AppContent: React.FC = () => {
                 key={p} 
                 onClick={() => handlePlatformFilter(p as any)}
                 className={`px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
-                  filterPlatform === p && viewMode === 'store'
+                  filterPlatform === p
                     ? 'bg-white text-[#0072ce] shadow-md shadow-blue-500/5 translate-y-[-1px]' 
                     : 'text-slate-400 hover:text-slate-600'
                 }`}
@@ -196,7 +202,7 @@ const AppContent: React.FC = () => {
            <Search className="absolute left-6 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300 group-focus-within:text-[#0072ce] transition-colors" />
            <input 
              type="text" 
-             placeholder={viewMode === 'store' ? "SEARCH REPOSITORY..." : "SEARCH YOUR COLLECTION..."}
+             placeholder={viewMode === 'store' ? "SEARCH REPOSITORY..." : "SEARCH COLLECTION..."}
              value={searchQuery} 
              onChange={e => setSearchQuery(e.target.value)}
              className="w-full pl-16 pr-32 py-5 bg-slate-50 border border-slate-100 rounded-[2rem] font-bold text-sm uppercase tracking-widest outline-none focus:bg-white focus:ring-4 ring-[#0072ce]/5 transition-all shadow-sm" 
@@ -207,8 +213,8 @@ const AppContent: React.FC = () => {
                title="Clear all filters and show all games"
                className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2 px-5 py-2.5 bg-white border border-slate-200 rounded-2xl text-[10px] font-black text-[#0072ce] hover:text-red-500 uppercase tracking-widest hover:border-red-200 hover:bg-red-50 transition-all shadow-sm group/btn"
              >
-               <RotateCcw className="w-4 h-4 group-hover/btn:rotate-[-120deg] transition-transform" />
-               <span className="hidden sm:inline">RESET</span>
+               <XCircle className="w-4 h-4 group-hover/btn:scale-110 transition-transform" />
+               <span className="hidden sm:inline">RESET ALL</span>
              </button>
            )}
         </div>
@@ -234,10 +240,10 @@ const AppContent: React.FC = () => {
               Explore the digital vault to add free PlayStation titles to your personal archive.
             </p>
             <button 
-              onClick={() => setViewMode('store')}
+              onClick={resetToFullStore}
               className="px-10 py-5 bg-[#0072ce] text-white rounded-[2rem] text-[10px] font-black uppercase tracking-widest shadow-2xl shadow-blue-500/20 active:scale-95 transition-all flex items-center gap-3 mx-auto"
             >
-              <PlusCircle className="w-4 h-4" /> Discover New Games
+              <PlusCircle className="w-4 h-4" /> Go to Store
             </button>
           </div>
         ) : filteredGames.length === 0 ? (
@@ -245,7 +251,9 @@ const AppContent: React.FC = () => {
             <Database className="w-16 h-16 text-slate-100 mx-auto mb-6" />
             <h3 className="text-xl font-black text-slate-300 uppercase tracking-widest">No Matches Found</h3>
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mt-2 mb-8">
-              {viewMode === 'library' ? "You don't own any games matching these criteria." : "No results in the full catalog."}
+              {viewMode === 'library' 
+                ? `No ${filterPlatform === 'All' ? '' : filterPlatform} games matching this search in your collection.` 
+                : "No matching games in the full catalog."}
             </p>
             <button onClick={resetToFullStore} className="px-8 py-3 bg-slate-100 text-[#0072ce] hover:bg-[#0072ce] hover:text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all">Show All Catalog Games</button>
           </div>
