@@ -62,7 +62,7 @@ const GameCard: React.FC<GameCardProps> = ({ game, onDownload, onReport, onWatch
   return (
     <div className="group relative flex flex-col h-full animate-fade">
       {/* Authentic Vertical Cover Area */}
-      <div className="relative game-cover-ratio overflow-hidden rounded-[1.5rem] bg-slate-200 shadow-lg card-transition hover-glow group-hover:-translate-y-4 border border-slate-100">
+      <div className="relative game-cover-ratio overflow-hidden rounded-[1.5rem] bg-slate-200 shadow-lg card-transition hover-glow group-hover:-translate-y-3 border border-slate-100">
         <img 
           src={game.imageUrl} 
           alt={game.title} 
@@ -70,33 +70,33 @@ const GameCard: React.FC<GameCardProps> = ({ game, onDownload, onReport, onWatch
         />
         
         {/* Cinematic Gradient Mask (Light Overlay) */}
-        <div className="absolute inset-0 bg-gradient-to-t from-[#0072ce]/20 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-all duration-500" />
+        <div className="absolute inset-0 bg-gradient-to-t from-[#0072ce]/30 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-all duration-500" />
         
         {/* System Labels */}
-        <div className="absolute top-5 left-5 flex flex-col gap-2">
-          <div className="px-3 py-1 bg-white/80 backdrop-blur-md border border-slate-200 rounded-lg text-[9px] font-black tracking-[0.25em] text-[#0072ce] uppercase shadow-sm">
+        <div className="absolute top-4 left-4 flex flex-col gap-2">
+          <div className="px-2.5 py-1 bg-white/90 backdrop-blur-md border border-slate-200 rounded-lg text-[8px] font-black tracking-[0.2em] text-[#0072ce] uppercase shadow-sm">
             {game.platform}
           </div>
           {isSaved && (
-            <div className="px-3 py-1 bg-[#0072ce] rounded-lg text-[9px] font-black tracking-[0.15em] text-white shadow-lg shadow-blue-500/20">
+            <div className="px-2.5 py-1 bg-[#0072ce] rounded-lg text-[8px] font-black tracking-[0.1em] text-white shadow-lg shadow-blue-500/20">
               OWNED
             </div>
           )}
         </div>
 
         {/* Pro Overlay Menu */}
-        <div className="absolute inset-0 flex flex-col justify-end p-6 opacity-0 group-hover:opacity-100 transition-all duration-500 translate-y-6 group-hover:translate-y-0">
-          <div className="flex flex-col gap-4">
+        <div className="absolute inset-0 flex flex-col justify-end p-5 opacity-0 group-hover:opacity-100 transition-all duration-500 translate-y-6 group-hover:translate-y-0">
+          <div className="flex flex-col gap-3">
             
             {/* Primary Download - PS Blue */}
             <button 
               onClick={handleDownloadClick}
               disabled={downloadState === 'preparing'}
-              className={`w-full h-14 rounded-2xl font-black text-[11px] tracking-[0.2em] uppercase flex items-center justify-center gap-3 btn-primary ${
+              className={`w-full h-12 rounded-xl font-black text-[10px] tracking-[0.15em] uppercase flex items-center justify-center gap-3 btn-primary ${
                 downloadState === 'done' ? 'bg-emerald-500 shadow-emerald-500/30' : ''
               }`}
             >
-              {downloadState === 'preparing' ? <PulseSpinner /> : downloadState === 'done' ? <CheckCircle2 className="w-5 h-5" /> : <Download className="w-4 h-4" />}
+              {downloadState === 'preparing' ? <PulseSpinner /> : downloadState === 'done' ? <CheckCircle2 className="w-4 h-4" /> : <Download className="w-4 h-4" />}
               {downloadState === 'idle' && 'Get Game'}
               {downloadState === 'done' && 'Available'}
             </button>
@@ -105,15 +105,15 @@ const GameCard: React.FC<GameCardProps> = ({ game, onDownload, onReport, onWatch
             <div className="flex gap-2">
               <button 
                 onClick={handleTrailerClick}
-                className="flex-grow h-12 rounded-2xl bg-white border border-slate-200 flex items-center justify-center gap-2 text-slate-900 hover:text-[#0072ce] font-black text-[9px] tracking-widest uppercase transition-all shadow-sm"
+                className="flex-grow h-11 rounded-xl bg-white border border-slate-200 flex items-center justify-center gap-2 text-slate-900 hover:text-[#0072ce] font-black text-[9px] tracking-widest uppercase transition-all shadow-sm"
               >
-                <Play className="w-4 h-4 fill-[#0072ce] text-[#0072ce]" />
+                <Play className="w-3.5 h-3.5 fill-[#0072ce] text-[#0072ce]" />
                 Trailer
               </button>
               
               <button 
                 onClick={handleReport}
-                className="w-12 h-12 rounded-2xl bg-white border border-slate-200 flex items-center justify-center text-slate-400 hover:text-red-500 transition-colors shadow-sm"
+                className="w-11 h-11 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-400 hover:text-red-500 transition-colors shadow-sm"
                 title="Flag Issues"
               >
                 <ShieldAlert className="w-4 h-4" />
@@ -121,36 +121,42 @@ const GameCard: React.FC<GameCardProps> = ({ game, onDownload, onReport, onWatch
             </div>
 
             {/* Micro Metadata */}
-            <div className="flex items-center justify-center gap-6 mt-1 border-t border-slate-100 pt-3">
-               <div className="flex items-center gap-1.5 text-slate-600">
+            <div className="flex items-center justify-center gap-5 mt-1 border-t border-slate-100/20 pt-3">
+               <div className="flex items-center gap-1.5 text-white">
                   <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
-                  <span className="text-[10px] font-black uppercase tracking-widest">{game.rating.toFixed(1)}</span>
+                  <span className="text-[9px] font-black uppercase tracking-widest">{game.rating.toFixed(1)}</span>
                </div>
-               <div className="flex items-center gap-1.5 text-slate-600">
-                  <Globe className="w-3 h-3 text-[#0072ce]" />
-                  <span className="text-[10px] font-black uppercase tracking-widest">{game.languages ? game.languages[0] : 'Intl'}</span>
+               <div className="flex items-center gap-1.5 text-white">
+                  <Globe className="w-3 h-3 text-blue-300" />
+                  <span className="text-[9px] font-black uppercase tracking-widest">{game.languages ? game.languages[0] : 'Intl'}</span>
                </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Product Information */}
-      <div className="mt-5 px-1">
-        <div className="flex justify-between items-start gap-3">
+      {/* Product Information - Fixed Height for Grid Uniformity */}
+      <div className="mt-4 px-1 min-h-[4.5rem] flex flex-col justify-start">
+        <div className="flex justify-between items-start gap-2">
            <div className="flex-grow">
-             <h3 className="text-[16px] font-black text-[#0072ce] font-outfit uppercase tracking-tight leading-tight group-hover:text-slate-900 transition-colors truncate">
+             <h3 className="text-[14px] font-black text-[#0072ce] font-outfit uppercase tracking-tight leading-[1.2] group-hover:text-slate-900 transition-colors line-clamp-2 min-h-[2.1rem]">
                {game.title}
              </h3>
-             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">
-               {game.category} • Official
-             </p>
+             <div className="flex items-center gap-2 mt-1.5">
+               <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                 {game.category}
+               </p>
+               <div className="w-1 h-1 bg-slate-200 rounded-full" />
+               <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                 Official
+               </p>
+             </div>
            </div>
 
            {isAdmin && (
             <button 
               onClick={(e) => { e.stopPropagation(); onEdit?.(game); }}
-              className="p-1.5 text-slate-300 hover:text-[#0072ce] hover:bg-slate-50 rounded-lg transition-all"
+              className="p-1 text-slate-300 hover:text-[#0072ce] hover:bg-slate-50 rounded-lg transition-all shrink-0"
             >
               <Info className="w-4 h-4" />
             </button>
