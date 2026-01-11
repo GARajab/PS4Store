@@ -8,7 +8,7 @@ import AuthModal from './components/AuthModal';
 import AdminPanel from './components/AdminPanel';
 import TrailerModal from './components/TrailerModal';
 import { SkeletonCard, LogoSpinner } from './components/LoadingSpinner';
-import { Search, Sparkles, Database, Activity, WifiOff, RefreshCw, ShoppingBag, PlusCircle, XCircle, ArrowLeft } from 'lucide-react';
+import { Search, Sparkles, Database, Activity, WifiOff, RefreshCw, ShoppingBag, PlusCircle, XCircle, ArrowLeft, RotateCcw } from 'lucide-react';
 import { ToastProvider, useToast } from './context/ToastContext';
 
 const AppContent: React.FC = () => {
@@ -119,15 +119,18 @@ const AppContent: React.FC = () => {
     });
   }, [games, searchQuery, filterPlatform, viewMode, libraryIds]);
 
-  const resetFilters = () => {
+  // CRITICAL: Resets everything to show ALL games in the DB
+  const resetToFullStore = () => {
     setSearchQuery('');
     setFilterPlatform('All');
     setViewMode('store');
+    showToast('info', 'Filters Cleared', 'Displaying full digital vault.');
   };
 
-  const handlePlatformClick = (p: Platform | 'All') => {
+  // When clicking platform tabs, we ALWAYS want to be in store mode to see ALL games of that platform
+  const handlePlatformFilter = (p: Platform | 'All') => {
     setFilterPlatform(p);
-    setViewMode('store'); // Reset to store view when browsing by platform
+    setViewMode('store'); 
   };
 
   const isLibraryEmpty = viewMode === 'library' && libraryIds.length === 0;
@@ -143,8 +146,8 @@ const AppContent: React.FC = () => {
           showToast('info', 'Disconnected', 'Node session terminated.');
         }}
         onAdminClick={() => setShowAdminPanel(true)}
-        onLibraryClick={() => setViewMode('library')}
-        onHomeClick={() => { setViewMode('store'); setFilterPlatform('All'); }}
+        onLibraryClick={() => { setViewMode('library'); setFilterPlatform('All'); }}
+        onHomeClick={resetToFullStore}
       />
 
       <main className="flex-grow pt-32 pb-20 px-6 max-w-7xl mx-auto w-full">
@@ -157,15 +160,17 @@ const AppContent: React.FC = () => {
                </h1>
                {viewMode === 'library' && (
                  <button 
-                   onClick={() => setViewMode('store')}
-                   className="mt-1 flex items-center gap-2 px-4 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-400 hover:text-[#0072ce] rounded-full text-[9px] font-black uppercase tracking-widest transition-all border border-slate-100"
+                   onClick={resetToFullStore}
+                   className="mt-1 flex items-center gap-2 px-4 py-1.5 bg-[#0072ce]/5 hover:bg-[#0072ce] text-[#0072ce] hover:text-white rounded-full text-[9px] font-black uppercase tracking-widest transition-all border border-[#0072ce]/10 shadow-sm"
                  >
-                   <ArrowLeft className="w-3 h-3" /> Exit Archive
+                   <RotateCcw className="w-3 h-3" /> Back to Store
                  </button>
                )}
              </div>
              <p className="text-slate-400 text-[11px] font-black uppercase tracking-[0.4em]">
-               {viewMode === 'store' ? 'Official PlayStation Repository' : `${libraryIds.length} Titles Collected`}
+               {viewMode === 'store' 
+                 ? (filterPlatform === 'All' ? 'Official PlayStation Repository' : `Browsing ${filterPlatform} Collection`) 
+                 : `Viewing ${filteredGames.length} Owned Titles`}
              </p>
            </div>
            
@@ -173,7 +178,7 @@ const AppContent: React.FC = () => {
             {['All', 'PS5', 'PS4'].map(p => (
               <button 
                 key={p} 
-                onClick={() => handlePlatformClick(p as any)}
+                onClick={() => handlePlatformFilter(p as any)}
                 className={`px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
                   filterPlatform === p && viewMode === 'store'
                     ? 'bg-white text-[#0072ce] shadow-md shadow-blue-500/5 translate-y-[-1px]' 
@@ -194,14 +199,16 @@ const AppContent: React.FC = () => {
              placeholder={viewMode === 'store' ? "SEARCH REPOSITORY..." : "SEARCH YOUR COLLECTION..."}
              value={searchQuery} 
              onChange={e => setSearchQuery(e.target.value)}
-             className="w-full pl-16 pr-24 py-5 bg-slate-50 border border-slate-100 rounded-[2rem] font-bold text-sm uppercase tracking-widest outline-none focus:bg-white focus:ring-4 ring-[#0072ce]/5 transition-all shadow-sm" 
+             className="w-full pl-16 pr-32 py-5 bg-slate-50 border border-slate-100 rounded-[2rem] font-bold text-sm uppercase tracking-widest outline-none focus:bg-white focus:ring-4 ring-[#0072ce]/5 transition-all shadow-sm" 
            />
            {(searchQuery || filterPlatform !== 'All' || viewMode === 'library') && (
              <button 
-               onClick={resetFilters}
-               className="absolute right-6 top-1/2 -translate-y-1/2 flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-[10px] font-black text-red-500 uppercase tracking-widest hover:bg-red-50 transition-all shadow-sm"
+               onClick={resetToFullStore}
+               title="Clear all filters and show all games"
+               className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2 px-5 py-2.5 bg-white border border-slate-200 rounded-2xl text-[10px] font-black text-[#0072ce] hover:text-red-500 uppercase tracking-widest hover:border-red-200 hover:bg-red-50 transition-all shadow-sm group/btn"
              >
-               <XCircle className="w-4 h-4" /> Clear
+               <RotateCcw className="w-4 h-4 group-hover/btn:rotate-[-120deg] transition-transform" />
+               <span className="hidden sm:inline">RESET</span>
              </button>
            )}
         </div>
@@ -237,8 +244,10 @@ const AppContent: React.FC = () => {
           <div className="text-center py-40 animate-fade">
             <Database className="w-16 h-16 text-slate-100 mx-auto mb-6" />
             <h3 className="text-xl font-black text-slate-300 uppercase tracking-widest">No Matches Found</h3>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mt-2 mb-8">Adjust your search or platform filters</p>
-            <button onClick={resetFilters} className="px-8 py-3 bg-slate-100 text-slate-500 hover:text-slate-900 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all">Show All Games</button>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mt-2 mb-8">
+              {viewMode === 'library' ? "You don't own any games matching these criteria." : "No results in the full catalog."}
+            </p>
+            <button onClick={resetToFullStore} className="px-8 py-3 bg-slate-100 text-[#0072ce] hover:bg-[#0072ce] hover:text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all">Show All Catalog Games</button>
           </div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-x-8 gap-y-12">
