@@ -1,11 +1,11 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Game, GameReport } from '../types';
+import { Game, GameReport, GameRequest } from '../types';
 import { 
   X, Plus, Trash2, CheckCircle, Database, Copy,
   Terminal, LayoutDashboard, ShieldCheck, 
   BarChart3, AlertCircle, Settings, Search, 
-  ChevronRight, ArrowUpRight, Clock, Box
+  ChevronRight, ArrowUpRight, Clock, Box, MessageSquarePlus
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useToast } from '../context/ToastContext';
@@ -19,7 +19,7 @@ interface AdminPanelProps {
   onClose: () => void;
 }
 
-type AdminTab = 'overview' | 'catalog' | 'reports' | 'system';
+type AdminTab = 'overview' | 'catalog' | 'reports' | 'requests' | 'system';
 
 const AdminPanel: React.FC<AdminPanelProps> = ({ games, initialGame, onUpdateGame, onAddGame, onClose }) => {
   const { showToast } = useToast();
@@ -28,7 +28,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ games, initialGame, onUpdateGam
   const [isSaving, setIsSaving] = useState(false);
   const [isSeeding, setIsSeeding] = useState(false);
   const [reports, setReports] = useState<GameReport[]>([]);
+  const [requests, setRequests] = useState<GameRequest[]>([]);
   const [isLoadingReports, setIsLoadingReports] = useState(false);
+  const [isLoadingRequests, setIsLoadingRequests] = useState(false);
   const [catalogSearch, setCatalogSearch] = useState('');
 
   // SAFE RECOVERY SQL
@@ -57,11 +59,22 @@ CREATE TABLE IF NOT EXISTS reports (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
+CREATE TABLE IF NOT EXISTS requests (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID,
+  game_title TEXT NOT NULL,
+  platform TEXT DEFAULT 'PS5',
+  status TEXT DEFAULT 'pending',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
+
 ALTER TABLE games DISABLE ROW LEVEL SECURITY;
 ALTER TABLE reports DISABLE ROW LEVEL SECURITY;
+ALTER TABLE requests DISABLE ROW LEVEL SECURITY;
 
 GRANT ALL ON TABLE games TO anon, authenticated, service_role;
-GRANT ALL ON TABLE reports TO anon, authenticated, service_role;`;
+GRANT ALL ON TABLE reports TO anon, authenticated, service_role;
+GRANT ALL ON TABLE requests TO anon, authenticated, service_role;`;
 
   useEffect(() => {
     if (initialGame) {
@@ -72,6 +85,7 @@ GRANT ALL ON TABLE reports TO anon, authenticated, service_role;`;
 
   useEffect(() => {
     if (activeTab === 'reports') fetchReports();
+    if (activeTab === 'requests') fetchRequests();
   }, [activeTab]);
 
   const fetchReports = async () => {
@@ -90,12 +104,39 @@ GRANT ALL ON TABLE reports TO anon, authenticated, service_role;`;
     }
   };
 
+  const fetchRequests = async () => {
+    setIsLoadingRequests(true);
+    try {
+      const { data, error } = await supabase
+        .from('requests')
+        .select(`*`)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      setRequests(data || []);
+    } catch (err: any) {
+      console.error(err);
+    } finally {
+      setIsLoadingRequests(false);
+    }
+  };
+
   const resolveReport = async (id: string) => {
     try {
       const { error } = await supabase.from('reports').update({ status: 'resolved' }).eq('id', id);
       if (error) throw error;
       showToast('success', 'Incident Resolved', 'Status updated to completed.');
       fetchReports();
+    } catch (err: any) {
+      showToast('error', 'Update Failed', err.message);
+    }
+  };
+
+  const updateRequestStatus = async (id: string, status: 'added' | 'rejected') => {
+    try {
+      const { error } = await supabase.from('requests').update({ status }).eq('id', id);
+      if (error) throw error;
+      showToast('success', 'Request Updated', `Status marked as ${status}.`);
+      fetchRequests();
     } catch (err: any) {
       showToast('error', 'Update Failed', err.message);
     }
@@ -179,6 +220,7 @@ GRANT ALL ON TABLE reports TO anon, authenticated, service_role;`;
             {[
               { id: 'overview', label: 'Dashboard', icon: LayoutDashboard },
               { id: 'catalog', label: 'Game Catalog', icon: Box },
+              { id: 'requests', label: 'Game Requests', icon: MessageSquarePlus },
               { id: 'reports', label: 'User Reports', icon: AlertCircle },
               { id: 'system', label: 'System Tools', icon: Settings },
             ].map((item) => (
@@ -195,6 +237,9 @@ GRANT ALL ON TABLE reports TO anon, authenticated, service_role;`;
                 <span className="text-[11px] font-black uppercase tracking-widest">{item.label}</span>
                 {item.id === 'reports' && reports.filter(r => r.status === 'pending').length > 0 && (
                   <div className="ml-auto w-2 h-2 bg-red-400 rounded-full animate-pulse" />
+                )}
+                {item.id === 'requests' && requests.filter(r => r.status === 'pending').length > 0 && (
+                  <div className="ml-auto w-2 h-2 bg-blue-400 rounded-full animate-pulse" />
                 )}
               </button>
             ))}
@@ -218,6 +263,7 @@ GRANT ALL ON TABLE reports TO anon, authenticated, service_role;`;
               <h3 className="text-2xl font-black text-slate-900 font-outfit uppercase tracking-tighter">
                 {activeTab === 'overview' && 'Archive Intelligence'}
                 {activeTab === 'catalog' && 'Game Repository'}
+                {activeTab === 'requests' && 'Community Requests'}
                 {activeTab === 'reports' && 'Security Incidents'}
                 {activeTab === 'system' && 'Infrastructure Tools'}
               </h3>
@@ -250,9 +296,9 @@ GRANT ALL ON TABLE reports TO anon, authenticated, service_role;`;
                     <p className="text-4xl font-black text-slate-900 font-outfit">{games.length}</p>
                   </div>
                   <div className="bg-slate-50 p-8 rounded-[2.5rem] border border-slate-100">
-                    <AlertCircle className="w-8 h-8 text-amber-500 mb-6" />
-                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Active Flags</h4>
-                    <p className="text-4xl font-black text-slate-900 font-outfit">{reports.filter(r => r.status === 'pending').length}</p>
+                    <MessageSquarePlus className="w-8 h-8 text-blue-500 mb-6" />
+                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Unfulfilled Requests</h4>
+                    <p className="text-4xl font-black text-slate-900 font-outfit">{requests.filter(r => r.status === 'pending').length}</p>
                   </div>
                 </div>
 
@@ -362,6 +408,63 @@ GRANT ALL ON TABLE reports TO anon, authenticated, service_role;`;
                         </div>
                       ))}
                     </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeTab === 'requests' && (
+              <div className="animate-fade">
+                {isLoadingRequests ? (
+                  <div className="text-center py-20">
+                    <Clock className="w-10 h-10 text-slate-200 mx-auto animate-spin mb-4" />
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Fetching Requests...</p>
+                  </div>
+                ) : requests.length === 0 ? (
+                  <div className="text-center py-32 bg-slate-50 rounded-[3rem] border border-dashed border-slate-200">
+                    <MessageSquarePlus className="w-12 h-12 text-blue-300 mx-auto mb-6" />
+                    <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest">No Active Requests</h4>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {requests.map(request => (
+                      <div key={request.id} className="p-8 bg-slate-50 border border-slate-100 rounded-[2rem] flex justify-between items-center group">
+                        <div className="flex items-center gap-6">
+                           <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${request.status === 'pending' ? 'bg-blue-100 text-blue-500' : request.status === 'added' ? 'bg-emerald-100 text-emerald-500' : 'bg-red-100 text-red-500'}`}>
+                              <Box className="w-6 h-6" />
+                           </div>
+                           <div>
+                              <p className="text-sm font-black text-slate-900 uppercase tracking-tight">{request.game_title}</p>
+                              <div className="flex items-center gap-3 mt-1">
+                                <span className="text-[9px] font-black text-[#0072ce] bg-white border border-slate-100 px-2 py-0.5 rounded-md uppercase tracking-widest">{request.platform}</span>
+                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{new Date(request.created_at).toLocaleDateString()}</span>
+                              </div>
+                           </div>
+                        </div>
+                        {request.status === 'pending' ? (
+                          <div className="flex gap-2">
+                            <button 
+                              onClick={() => updateRequestStatus(request.id, 'added')}
+                              className="bg-emerald-500 text-white px-6 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest shadow-lg shadow-emerald-500/10 hover:bg-emerald-600 transition-all"
+                            >
+                              Fulfill
+                            </button>
+                            <button 
+                              onClick={() => updateRequestStatus(request.id, 'rejected')}
+                              className="bg-slate-200 text-slate-500 px-6 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white transition-all"
+                            >
+                              Deny
+                            </button>
+                          </div>
+                        ) : (
+                          <span className={`text-[10px] font-black uppercase tracking-widest px-6 py-2.5 rounded-xl border ${
+                            request.status === 'added' ? 'text-emerald-500 bg-emerald-50 border-emerald-100' : 'text-red-500 bg-red-50 border-red-100'
+                          }`}>
+                            {request.status.toUpperCase()}
+                          </span>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>

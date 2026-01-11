@@ -32,6 +32,15 @@ export interface GameReport {
   created_at: string;
 }
 
+export interface GameRequest {
+  id: string;
+  user_id: string;
+  game_title: string;
+  platform: Platform;
+  status: 'pending' | 'added' | 'rejected';
+  created_at: string;
+}
+
 export interface User {
   id: string;
   username: string;

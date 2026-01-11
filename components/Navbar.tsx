@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { User } from '../types';
-import { LogOut, User as UserIcon, ChevronDown, Gamepad2, ShieldCheck, Database, LayoutGrid } from 'lucide-react';
+import { LogOut, User as UserIcon, ChevronDown, Gamepad2, ShieldCheck, Database, LayoutGrid, MessageSquarePlus, Bell } from 'lucide-react';
 
 interface NavbarProps {
   user: User | null;
@@ -11,10 +11,13 @@ interface NavbarProps {
   onAdminClick: () => void;
   onLibraryClick: () => void;
   onHomeClick: () => void;
+  onRequestClick: () => void;
+  pendingRequestsCount?: number;
 }
 
-const Navbar: React.FC<NavbarProps> = ({ user, reportCount, onAuthClick, onLogout, onAdminClick, onLibraryClick, onHomeClick }) => {
+const Navbar: React.FC<NavbarProps> = ({ user, reportCount, onAuthClick, onLogout, onAdminClick, onLibraryClick, onHomeClick, onRequestClick, pendingRequestsCount = 0 }) => {
   const [showDropdown, setShowDropdown] = useState(false);
+  const totalAlerts = reportCount + pendingRequestsCount;
 
   return (
     <nav className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] w-[calc(100%-3rem)] max-w-6xl">
@@ -38,6 +41,10 @@ const Navbar: React.FC<NavbarProps> = ({ user, reportCount, onAuthClick, onLogou
         <div className="hidden md:flex items-center gap-8">
            <button onClick={onHomeClick} className="text-[11px] font-black uppercase tracking-widest text-slate-400 hover:text-[#0072ce] transition-colors">Catalog</button>
            <button onClick={onLibraryClick} className="text-[11px] font-black uppercase tracking-widest text-slate-400 hover:text-[#0072ce] transition-colors">My Games</button>
+           <button onClick={onRequestClick} className="text-[11px] font-black uppercase tracking-widest text-slate-400 hover:text-[#0072ce] transition-colors flex items-center gap-2">
+             <MessageSquarePlus className="w-3.5 h-3.5" />
+             Request
+           </button>
         </div>
 
         {/* User Navigation */}
@@ -46,13 +53,19 @@ const Navbar: React.FC<NavbarProps> = ({ user, reportCount, onAuthClick, onLogou
             <div className="relative">
               <button 
                 onClick={() => setShowDropdown(!showDropdown)}
-                className="flex items-center gap-2.5 bg-slate-50 hover:bg-slate-100 px-4 py-2 rounded-2xl transition-all border border-slate-200 group"
+                className="flex items-center gap-2.5 bg-slate-50 hover:bg-slate-100 px-4 py-2 rounded-2xl transition-all border border-slate-200 group relative"
               >
                 <div className="w-7 h-7 bg-[#0072ce]/10 rounded-lg flex items-center justify-center text-[#0072ce] border border-[#0072ce]/20">
                    <UserIcon className="w-4 h-4" />
                 </div>
                 <span className="text-xs font-bold text-slate-900 hidden sm:block">{user.username}</span>
                 <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-300 ${showDropdown ? 'rotate-180' : ''}`} />
+                
+                {user.isAdmin && totalAlerts > 0 && (
+                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[8px] font-black flex items-center justify-center rounded-full border-2 border-white animate-pulse">
+                    {totalAlerts}
+                  </span>
+                )}
               </button>
 
               {showDropdown && (
@@ -65,10 +78,17 @@ const Navbar: React.FC<NavbarProps> = ({ user, reportCount, onAuthClick, onLogou
                     {user.isAdmin && (
                       <button 
                         onClick={() => {onAdminClick(); setShowDropdown(false);}}
-                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-white bg-[#0072ce] font-bold text-[11px] transition-all hover:bg-[#005bb8]"
+                        className="w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl text-white bg-[#0072ce] font-bold text-[11px] transition-all hover:bg-[#005bb8]"
                       >
-                        <ShieldCheck className="w-4 h-4" />
-                        ADMIN PANEL
+                        <div className="flex items-center gap-3">
+                          <ShieldCheck className="w-4 h-4" />
+                          ADMIN PANEL
+                        </div>
+                        {totalAlerts > 0 && (
+                          <span className="bg-white text-[#0072ce] px-1.5 py-0.5 rounded-md text-[8px] font-black">
+                            {totalAlerts}
+                          </span>
+                        )}
                       </button>
                     )}
                     <button 
@@ -77,6 +97,13 @@ const Navbar: React.FC<NavbarProps> = ({ user, reportCount, onAuthClick, onLogou
                     >
                       <Database className="w-4 h-4 text-[#0072ce]" />
                       COLLECTION
+                    </button>
+                    <button 
+                      onClick={() => {onRequestClick(); setShowDropdown(false);}}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-600 hover:bg-slate-50 font-bold text-[11px] transition-all"
+                    >
+                      <MessageSquarePlus className="w-4 h-4 text-[#0072ce]" />
+                      REQUEST GAME
                     </button>
                     <div className="h-px bg-slate-100 my-1 mx-2" />
                     <button 
