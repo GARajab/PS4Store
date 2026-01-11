@@ -8,7 +8,7 @@ import AuthModal from './components/AuthModal';
 import AdminPanel from './components/AdminPanel';
 import TrailerModal from './components/TrailerModal';
 import { SkeletonCard, LogoSpinner } from './components/LoadingSpinner';
-import { Search, Sparkles, Database, Activity, WifiOff, RefreshCw, ShoppingBag, PlusCircle } from 'lucide-react';
+import { Search, Sparkles, Database, Activity, WifiOff, RefreshCw, ShoppingBag, PlusCircle, XCircle, ArrowLeft } from 'lucide-react';
 import { ToastProvider, useToast } from './context/ToastContext';
 
 const AppContent: React.FC = () => {
@@ -28,7 +28,6 @@ const AppContent: React.FC = () => {
   const syncProfile = useCallback(async (sbUser: any) => {
     if (!sbUser) return;
     
-    // Initial user state from auth metadata
     setUser({
       id: sbUser.id,
       username: sbUser.user_metadata?.username || sbUser.email?.split('@')[0] || 'Player',
@@ -37,13 +36,11 @@ const AppContent: React.FC = () => {
     });
 
     try {
-      // 1. Fetch persistent profile data
       const { data: profile } = await supabase.from('profiles').select('*').eq('id', sbUser.id).maybeSingle();
       if (profile) {
         setUser(prev => prev ? { ...prev, username: profile.username || prev.username, isAdmin: !!profile.is_admin } : null);
       }
       
-      // 2. Fetch user's game library
       const { data: library } = await supabase.from('user_library').select('game_id').eq('user_id', sbUser.id);
       if (library) {
         setLibraryIds(library.map(i => i.game_id));
@@ -72,25 +69,21 @@ const AppContent: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    // 1. Check current session
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) syncProfile(session.user);
     });
 
-    // 2. Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
         syncProfile(session.user);
       } else {
         setUser(null);
         setLibraryIds([]);
-        setViewMode('store'); // Reset to store on logout
+        setViewMode('store');
       }
     });
 
-    // 3. Initial games fetch
     fetchGames();
-
     return () => subscription.unsubscribe();
   }, [fetchGames, syncProfile]);
 
@@ -111,8 +104,6 @@ const AppContent: React.FC = () => {
         setLibraryIds(prev => [...prev, game.id]);
         showToast('success', 'Archive Updated', `${game.title} added to your library.`);
       }
-      
-      // Trigger actual download in new tab
       window.open(game.downloadUrl, '_blank');
     } catch (e: any) {
       showToast('error', 'Sync Failed', 'Could not update your remote collection.');
@@ -128,6 +119,17 @@ const AppContent: React.FC = () => {
     });
   }, [games, searchQuery, filterPlatform, viewMode, libraryIds]);
 
+  const resetFilters = () => {
+    setSearchQuery('');
+    setFilterPlatform('All');
+    setViewMode('store');
+  };
+
+  const handlePlatformClick = (p: Platform | 'All') => {
+    setFilterPlatform(p);
+    setViewMode('store'); // Reset to store view when browsing by platform
+  };
+
   const isLibraryEmpty = viewMode === 'library' && libraryIds.length === 0;
 
   return (
@@ -142,16 +144,26 @@ const AppContent: React.FC = () => {
         }}
         onAdminClick={() => setShowAdminPanel(true)}
         onLibraryClick={() => setViewMode('library')}
-        onHomeClick={() => setViewMode('store')}
+        onHomeClick={() => { setViewMode('store'); setFilterPlatform('All'); }}
       />
 
       <main className="flex-grow pt-32 pb-20 px-6 max-w-7xl mx-auto w-full">
         {/* Header Section */}
         <div className="mb-12 flex flex-col md:flex-row md:items-end justify-between gap-6">
            <div className="animate-fade">
-             <h1 className="text-5xl font-black font-outfit uppercase tracking-tighter text-[#0072ce] leading-none mb-3">
-               {viewMode === 'store' ? 'Digital Vault' : 'My Archive'}
-             </h1>
+             <div className="flex items-center gap-4 mb-3">
+               <h1 className="text-5xl font-black font-outfit uppercase tracking-tighter text-[#0072ce] leading-none">
+                 {viewMode === 'store' ? 'Digital Vault' : 'My Archive'}
+               </h1>
+               {viewMode === 'library' && (
+                 <button 
+                   onClick={() => setViewMode('store')}
+                   className="mt-1 flex items-center gap-2 px-4 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-400 hover:text-[#0072ce] rounded-full text-[9px] font-black uppercase tracking-widest transition-all border border-slate-100"
+                 >
+                   <ArrowLeft className="w-3 h-3" /> Exit Archive
+                 </button>
+               )}
+             </div>
              <p className="text-slate-400 text-[11px] font-black uppercase tracking-[0.4em]">
                {viewMode === 'store' ? 'Official PlayStation Repository' : `${libraryIds.length} Titles Collected`}
              </p>
@@ -161,9 +173,9 @@ const AppContent: React.FC = () => {
             {['All', 'PS5', 'PS4'].map(p => (
               <button 
                 key={p} 
-                onClick={() => setFilterPlatform(p as any)}
+                onClick={() => handlePlatformClick(p as any)}
                 className={`px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
-                  filterPlatform === p 
+                  filterPlatform === p && viewMode === 'store'
                     ? 'bg-white text-[#0072ce] shadow-md shadow-blue-500/5 translate-y-[-1px]' 
                     : 'text-slate-400 hover:text-slate-600'
                 }`}
@@ -182,8 +194,16 @@ const AppContent: React.FC = () => {
              placeholder={viewMode === 'store' ? "SEARCH REPOSITORY..." : "SEARCH YOUR COLLECTION..."}
              value={searchQuery} 
              onChange={e => setSearchQuery(e.target.value)}
-             className="w-full pl-16 pr-8 py-5 bg-slate-50 border border-slate-100 rounded-[2rem] font-bold text-sm uppercase tracking-widest outline-none focus:bg-white focus:ring-4 ring-[#0072ce]/5 transition-all shadow-sm" 
+             className="w-full pl-16 pr-24 py-5 bg-slate-50 border border-slate-100 rounded-[2rem] font-bold text-sm uppercase tracking-widest outline-none focus:bg-white focus:ring-4 ring-[#0072ce]/5 transition-all shadow-sm" 
            />
+           {(searchQuery || filterPlatform !== 'All' || viewMode === 'library') && (
+             <button 
+               onClick={resetFilters}
+               className="absolute right-6 top-1/2 -translate-y-1/2 flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-[10px] font-black text-red-500 uppercase tracking-widest hover:bg-red-50 transition-all shadow-sm"
+             >
+               <XCircle className="w-4 h-4" /> Clear
+             </button>
+           )}
         </div>
 
         {/* Main Grid / Content */}
@@ -217,7 +237,8 @@ const AppContent: React.FC = () => {
           <div className="text-center py-40 animate-fade">
             <Database className="w-16 h-16 text-slate-100 mx-auto mb-6" />
             <h3 className="text-xl font-black text-slate-300 uppercase tracking-widest">No Matches Found</h3>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mt-2">Adjust your search or platform filters</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mt-2 mb-8">Adjust your search or platform filters</p>
+            <button onClick={resetFilters} className="px-8 py-3 bg-slate-100 text-slate-500 hover:text-slate-900 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all">Show All Games</button>
           </div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-x-8 gap-y-12">
