@@ -5,7 +5,9 @@ import {
   X, Plus, Trash2, CheckCircle, Database, Copy,
   Terminal, LayoutDashboard, ShieldCheck, 
   BarChart3, AlertCircle, Settings, Search, 
-  ChevronRight, ArrowUpRight, Clock, Box, MessageSquarePlus
+  ChevronRight, ArrowUpRight, Clock, Box, MessageSquarePlus, Wrench,
+  // Added AlertTriangle to fix the reference error on line 523
+  AlertTriangle
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useToast } from '../context/ToastContext';
@@ -518,6 +520,18 @@ GRANT ALL ON TABLE requests TO anon, authenticated, service_role;`;
 
             {activeTab === 'system' && (
               <div className="space-y-10 animate-fade">
+                <div className="bg-amber-50 border border-amber-200 rounded-[2.5rem] p-8 flex items-center gap-6">
+                  <div className="w-16 h-16 bg-amber-500 text-white rounded-[1.5rem] flex items-center justify-center shrink-0">
+                    <AlertTriangle className="w-8 h-8" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-black text-amber-900 uppercase tracking-tight">Schema Repair Required?</h4>
+                    <p className="text-xs text-amber-700 font-medium leading-relaxed">
+                      If you see errors like <strong>"Could not find table public.requests"</strong>, it means the database is not initialized. Copy the script below and run it in your Supabase SQL Editor.
+                    </p>
+                  </div>
+                </div>
+
                 <div className="bg-slate-900 rounded-[2.5rem] p-10 relative group overflow-hidden">
                   <div className="absolute top-0 right-0 p-12 opacity-5 pointer-events-none">
                     <Terminal className="w-48 h-48 text-white" />

@@ -8,7 +8,7 @@ import AuthModal from './components/AuthModal';
 import AdminPanel from './components/AdminPanel';
 import TrailerModal from './components/TrailerModal';
 import { SkeletonCard, LogoSpinner } from './components/LoadingSpinner';
-import { Search, Sparkles, Database, Activity, WifiOff, RefreshCw, ShoppingBag, PlusCircle, XCircle, ArrowLeft, RotateCcw, MessageSquarePlus, X, Clock, CheckCircle, Ban } from 'lucide-react';
+import { Search, Sparkles, Database, Activity, WifiOff, RefreshCw, ShoppingBag, PlusCircle, XCircle, ArrowLeft, RotateCcw, MessageSquarePlus, X, Clock, CheckCircle, Ban, AlertTriangle } from 'lucide-react';
 import { ToastProvider, useToast } from './context/ToastContext';
 
 const RequestGameModal: React.FC<{ isOpen: boolean; onClose: () => void; user: User | null; onAuthClick: () => void; onRequested: () => void }> = ({ isOpen, onClose, user, onAuthClick, onRequested }) => {
@@ -16,6 +16,7 @@ const RequestGameModal: React.FC<{ isOpen: boolean; onClose: () => void; user: U
   const [title, setTitle] = useState('');
   const [platform, setPlatform] = useState<Platform>('PS5');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isTableMissing, setIsTableMissing] = useState(false);
 
   if (!isOpen) return null;
 
@@ -33,7 +34,6 @@ const RequestGameModal: React.FC<{ isOpen: boolean; onClose: () => void; user: U
 
     setIsSubmitting(true);
     try {
-      // Create request entry in database
       const { error } = await supabase.from('requests').insert([
         { 
           user_id: user.id, 
@@ -43,7 +43,14 @@ const RequestGameModal: React.FC<{ isOpen: boolean; onClose: () => void; user: U
         }
       ]);
       
-      if (error) throw error;
+      if (error) {
+        // Handle missing table error (42P01)
+        if (error.code === '42P01' || error.message.includes('requests')) {
+          setIsTableMissing(true);
+          throw new Error("Database Request System is not initialized. Contact Admin.");
+        }
+        throw error;
+      }
       
       showToast('success', 'Request Dispatched', 'Admins have been notified. Check your collection for status updates.');
       setTitle('');
@@ -51,7 +58,7 @@ const RequestGameModal: React.FC<{ isOpen: boolean; onClose: () => void; user: U
       onClose();
     } catch (err: any) {
       console.error("Submission error:", err);
-      showToast('error', 'Transmission Failed', err.message || 'Check database connection.');
+      showToast('error', 'Transmission Failed', err.message);
     } finally {
       setIsSubmitting(false);
     }
@@ -70,37 +77,49 @@ const RequestGameModal: React.FC<{ isOpen: boolean; onClose: () => void; user: U
           <h2 className="text-3xl font-black text-slate-900 font-outfit uppercase tracking-tighter mb-2">Request Game</h2>
           <p className="text-slate-400 text-[10px] uppercase font-black tracking-[0.4em]">Can't find it? We'll find it.</p>
         </div>
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="space-y-2">
-            <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest ml-1">Game Title</label>
-            <input 
-              type="text" required value={title} onChange={e => setTitle(e.target.value)}
-              className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:bg-white focus:border-[#0072ce] outline-none text-slate-900 font-bold text-sm transition-all"
-              placeholder="e.g. Elden Ring"
-            />
+
+        {isTableMissing ? (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-6 text-center">
+            <AlertTriangle className="w-8 h-8 text-amber-500 mx-auto mb-3" />
+            <h3 className="text-sm font-black text-amber-900 uppercase mb-2">System Not Ready</h3>
+            <p className="text-xs text-amber-700 font-medium mb-4">
+              The 'requests' table is missing from your database. {user?.isAdmin ? "Please run the initialization script in Admin Panel > System Tools." : "Please contact the site administrator."}
+            </p>
+            <button onClick={onClose} className="w-full py-3 bg-amber-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest">Understood</button>
           </div>
-          <div className="space-y-2">
-            <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest ml-1">Target Platform</label>
-            <div className="grid grid-cols-2 gap-3">
-              {['PS5', 'PS4'].map(p => (
-                <button
-                  key={p} type="button" onClick={() => setPlatform(p as Platform)}
-                  className={`py-4 rounded-2xl font-black text-[10px] tracking-widest transition-all border ${
-                    platform === p ? 'bg-[#0072ce] text-white border-[#0072ce] shadow-lg shadow-blue-500/20' : 'bg-slate-50 text-slate-400 border-slate-200 hover:border-slate-300'
-                  }`}
-                >
-                  {p}
-                </button>
-              ))}
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest ml-1">Game Title</label>
+              <input 
+                type="text" required value={title} onChange={e => setTitle(e.target.value)}
+                className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:bg-white focus:border-[#0072ce] outline-none text-slate-900 font-bold text-sm transition-all"
+                placeholder="e.g. Elden Ring"
+              />
             </div>
-          </div>
-          <button 
-            type="submit" disabled={isSubmitting}
-            className="w-full bg-[#0072ce] hover:bg-[#005bb8] text-white font-black py-5 rounded-[2rem] mt-4 transition-all active:scale-95 disabled:opacity-50 flex justify-center items-center gap-3 shadow-2xl shadow-blue-500/10 text-xs tracking-widest uppercase"
-          >
-            {isSubmitting ? 'Transmitting...' : 'Submit Request'}
-          </button>
-        </form>
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest ml-1">Target Platform</label>
+              <div className="grid grid-cols-2 gap-3">
+                {['PS5', 'PS4'].map(p => (
+                  <button
+                    key={p} type="button" onClick={() => setPlatform(p as Platform)}
+                    className={`py-4 rounded-2xl font-black text-[10px] tracking-widest transition-all border ${
+                      platform === p ? 'bg-[#0072ce] text-white border-[#0072ce] shadow-lg shadow-blue-500/20' : 'bg-slate-50 text-slate-400 border-slate-200 hover:border-slate-300'
+                    }`}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <button 
+              type="submit" disabled={isSubmitting}
+              className="w-full bg-[#0072ce] hover:bg-[#005bb8] text-white font-black py-5 rounded-[2rem] mt-4 transition-all active:scale-95 disabled:opacity-50 flex justify-center items-center gap-3 shadow-2xl shadow-blue-500/10 text-xs tracking-widest uppercase"
+            >
+              {isSubmitting ? 'Transmitting...' : 'Submit Request'}
+            </button>
+          </form>
+        )}
       </div>
     </div>
   );
@@ -125,9 +144,16 @@ const AppContent: React.FC = () => {
 
   const fetchUserRequests = useCallback(async (userId: string) => {
     try {
-      const { data } = await supabase.from('requests').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+      const { data, error } = await supabase.from('requests').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+      if (error) {
+         if (error.code === '42P01') {
+           console.warn("Requests table not yet initialized in Supabase.");
+           return;
+         }
+         throw error;
+      }
       if (data) setUserRequests(data);
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error("Fetch requests error:", e); }
   }, []);
 
   const fetchAdminAlerts = useCallback(async () => {
@@ -135,7 +161,9 @@ const AppContent: React.FC = () => {
       const { count: reqCount } = await supabase.from('requests').select('*', { count: 'exact', head: true }).eq('status', 'pending');
       const { count: repCount } = await supabase.from('reports').select('*', { count: 'exact', head: true }).eq('status', 'pending');
       setAdminStats({ requests: reqCount || 0, reports: repCount || 0 });
-    } catch (e) { console.error(e); }
+    } catch (e) { 
+      // Silent catch as this might fail before first DB setup
+    }
   }, []);
 
   const syncProfile = useCallback(async (sbUser: any) => {
