@@ -10,7 +10,7 @@ export const generateGameDescription = async (gameTitle: string): Promise<string
       contents: `Provide a short, 2-sentence marketing description for the PlayStation game: ${gameTitle}`,
       config: {
         temperature: 0.7,
-        maxOutputTokens: 100,
+        // Fixed: Avoid setting maxOutputTokens without a thinkingBudget to prevent potential empty responses on Gemini 3 models.
       },
     });
     return response.text?.trim() || "No description available.";
