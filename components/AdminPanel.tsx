@@ -8,7 +8,7 @@ import {
   ChevronRight, ArrowUpRight, Clock, Box, MessageSquarePlus, 
   AlertTriangle, Users, ShieldAlert, Globe, Layers, Download,
   User as UserIcon, RefreshCcw, Zap, Activity, Image as ImageIcon,
-  FileText, Link as LinkIcon, Gamepad2
+  FileText, Link as LinkIcon, Gamepad2, History
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useToast } from '../context/ToastContext';
@@ -37,8 +37,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ games, currentUser, onUpdateGam
 
   const isSuperAdmin = currentUser?.email === 'admin@fpkg.com';
 
-  const ultimateSql = `-- ULTIMATE V5.2 INFRASTRUCTURE SYNC
--- Run this in Supabase SQL Editor to fix missing columns.
+  const ultimateSql = `-- ULTIMATE V5.4 AUDIT INFRASTRUCTURE SYNC
+-- Run this in Supabase SQL Editor to enable admin tracking.
 
 -- 1. PROFILES & ROLES
 CREATE TABLE IF NOT EXISTS profiles (
@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS profiles (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
 
--- 2. ENHANCED GAMES TABLE
+-- 2. ENHANCED GAMES TABLE (With Audit Columns)
 CREATE TABLE IF NOT EXISTS games (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   title TEXT NOT NULL,
@@ -61,8 +61,14 @@ CREATE TABLE IF NOT EXISTS games (
   rating FLOAT DEFAULT 4.5,
   download_count INTEGER DEFAULT 0,
   languages JSONB DEFAULT '["English"]',
-  updates JSONB DEFAULT '[]'
+  updates JSONB DEFAULT '[]',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  created_by UUID REFERENCES profiles(id)
 );
+
+-- Ensure columns exist if table was already created
+ALTER TABLE games ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT now();
+ALTER TABLE games ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES profiles(id);
 
 -- 3. REQUESTS & REPORTS
 CREATE TABLE IF NOT EXISTS requests (
@@ -168,7 +174,7 @@ GRANT ALL ON TABLE reports TO anon, authenticated, service_role;`;
     }
     setIsSaving(true);
     try {
-      const payload = {
+      const payload: any = {
         title: editingGame.title,
         description: editingGame.description || '',
         imageUrl: editingGame.imageUrl || '',
@@ -179,12 +185,25 @@ GRANT ALL ON TABLE reports TO anon, authenticated, service_role;`;
         updates: editingGame.updates || []
       };
 
+      // Attribute current admin to the entry
+      if (!editingGame.id && currentUser) {
+        // Only set created_by on initial insert
+        payload.created_by = currentUser.id;
+      }
+
       const { error } = editingGame.id 
         ? await supabase.from('games').update(payload).eq('id', editingGame.id)
         : await supabase.from('games').insert([{ ...payload, rating: 4.5, download_count: 0 }]);
 
-      if (error) throw error;
-      showToast('success', 'Database Write OK', `${editingGame.title} synchronized.`);
+      if (error) {
+        // If foreign key constraint fails, it usually means the admin profile record hasn't reached the DB yet
+        if (error.code === '23503') {
+           throw new Error("Admin profile sync in progress. Please refresh the page and try again.");
+        }
+        throw error;
+      }
+
+      showToast('success', 'Database Write OK', `${editingGame.title} audit saved.`);
       onUpdateGame();
       setEditingGame(null);
     } catch (err: any) {
@@ -200,6 +219,15 @@ GRANT ALL ON TABLE reports TO anon, authenticated, service_role;`;
     pendingReports: reports.filter(r => r.status === 'pending').length,
     catalogSize: games.length
   }), [games, requests, reports]);
+
+  // Helper to extract the handle (part before @) from email
+  const getAdminHandle = (game: any) => {
+    const email = game.profiles?.email;
+    if (email) {
+      return email.split('@')[0];
+    }
+    return 'SYSTEM';
+  };
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-2xl z-[200] flex items-center justify-center p-4">
@@ -287,7 +315,6 @@ GRANT ALL ON TABLE reports TO anon, authenticated, service_role;`;
                 <div className="bg-slate-50 p-10 rounded-[3rem] border border-slate-100 space-y-8">
                   <div className="grid grid-cols-2 gap-8">
                     <div className="col-span-2 space-y-2">
-                      {/* Fixed: Added Gamepad2 to the lucide-react import list. */}
                       <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest ml-2 flex items-center gap-2"><Gamepad2 className="w-3 h-3"/> Game Title</label>
                       <input type="text" value={editingGame.title || ''} onChange={e => setEditingGame({...editingGame, title: e.target.value})} className="w-full p-5 bg-white border border-slate-200 rounded-2xl font-bold outline-none focus:border-[#0072ce] transition-all" placeholder="Enter full game name" />
                     </div>
@@ -372,6 +399,13 @@ GRANT ALL ON TABLE reports TO anon, authenticated, service_role;`;
                           <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{g.platform}</p>
                           <span className="text-[8px] font-black text-blue-500 bg-blue-50 px-2 py-0.5 rounded-md uppercase">{g.updates?.length || 0} UPDATES</span>
                         </div>
+                        {/* Audit Trail Info - Now showing Handle instead of UUID */}
+                        <div className="flex items-center gap-2 mt-2 opacity-60 group-hover:opacity-100 transition-opacity">
+                          <History className="w-3 h-3 text-slate-400" />
+                          <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">
+                            Added by {getAdminHandle(g)} on {g.created_at ? new Date(g.created_at).toLocaleString() : 'LEGACY DATE'}
+                          </p>
+                        </div>
                       </div>
                     </div>
                     <div className="flex gap-3">
@@ -422,7 +456,6 @@ GRANT ALL ON TABLE reports TO anon, authenticated, service_role;`;
               </div>
             )}
 
-            {/* Other tabs follow same logic as existing blocks... */}
             {activeTab === 'reports' && (
               <div className="space-y-4 animate-fade">
                 {reports.length === 0 ? <div className="text-center py-40 text-slate-300 uppercase font-black text-xs">Security Clear</div> : 
@@ -447,8 +480,8 @@ GRANT ALL ON TABLE reports TO anon, authenticated, service_role;`;
                 <div className="bg-slate-900 rounded-[3rem] p-12 relative overflow-hidden group">
                   <div className="flex justify-between items-start mb-10">
                     <div>
-                      <h4 className="text-white text-xl font-black uppercase">Infrastructure Sync v5.2</h4>
-                      <p className="text-blue-400 text-[10px] font-black uppercase mt-1 tracking-widest">Maintain • Repair • Patch</p>
+                      <h4 className="text-white text-xl font-black uppercase">Infrastructure Sync v5.4</h4>
+                      <p className="text-blue-400 text-[10px] font-black uppercase mt-1 tracking-widest">Audit Tracking • Security Patch</p>
                     </div>
                     <button 
                       onClick={() => { navigator.clipboard.writeText(ultimateSql); showToast('success', 'Sync Script Copied', 'Paste into Supabase SQL tab.'); }}

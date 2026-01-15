@@ -20,6 +20,8 @@ export interface Game {
   download_count: number;
   languages?: string[];
   updates?: GameUpdate[];
+  created_at?: string;
+  created_by?: string;
 }
 
 export interface GameReport {

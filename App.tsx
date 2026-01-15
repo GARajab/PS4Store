@@ -163,16 +163,32 @@ const AppContent: React.FC = () => {
   const syncProfile = useCallback(async (sbUser: any) => {
     if (!sbUser) return;
     
-    setUser({
+    const baseUser: User = {
       id: sbUser.id,
       username: sbUser.user_metadata?.username || sbUser.email?.split('@')[0] || 'Player',
       email: sbUser.email || '',
       isAdmin: sbUser.email?.toLowerCase().includes('admin') || false,
-    });
+    };
+
+    setUser(baseUser);
 
     try {
-      const { data: profile } = await supabase.from('profiles').select('*').eq('id', sbUser.id).maybeSingle();
-      if (profile) {
+      // Check for profile entry and create it if missing to satisfy FK constraints
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', sbUser.id)
+        .maybeSingle();
+
+      if (!profile && !profileError) {
+        // Create the missing profile node
+        await supabase.from('profiles').insert([{
+          id: sbUser.id,
+          username: baseUser.username,
+          email: baseUser.email,
+          is_admin: baseUser.isAdmin
+        }]);
+      } else if (profile) {
         setUser(prev => prev ? { ...prev, username: profile.username || prev.username, isAdmin: !!profile.is_admin } : null);
       }
       
@@ -180,14 +196,18 @@ const AppContent: React.FC = () => {
       if (library) setLibraryIds(library.map(i => i.game_id));
       
       fetchUserRequests(sbUser.id);
-      if (sbUser.email?.toLowerCase().includes('admin')) fetchAdminAlerts();
+      if (baseUser.isAdmin) fetchAdminAlerts();
     } catch (e) { console.error("Profile sync error:", e); }
   }, [fetchUserRequests, fetchAdminAlerts]);
 
   const fetchGames = useCallback(async () => {
     setIsLoadingGames(true);
     try {
-      const { data, error } = await supabase.from('games').select('*').order('title', { ascending: true });
+      // Join with profiles table to get the email for audit trail
+      const { data, error } = await supabase
+        .from('games')
+        .select('*, profiles:created_by(email)')
+        .order('title', { ascending: true });
       if (error) throw error;
       setGames(data || []);
       setFetchError(null);
