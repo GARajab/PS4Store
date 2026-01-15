@@ -38,8 +38,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ games, currentUser, onUpdateGam
   const isSuperAdmin = currentUser?.email === 'admin@fpkg.com';
 
   const ultimateSql = `-- ULTIMATE V5.4 AUDIT INFRASTRUCTURE SYNC
--- Run this in Supabase SQL Editor to enable admin tracking.
-
 -- 1. PROFILES & ROLES
 CREATE TABLE IF NOT EXISTS profiles (
   id UUID REFERENCES auth.users ON DELETE CASCADE PRIMARY KEY,
@@ -49,7 +47,7 @@ CREATE TABLE IF NOT EXISTS profiles (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
 
--- 2. ENHANCED GAMES TABLE (With Audit Columns)
+-- 2. ENHANCED GAMES TABLE
 CREATE TABLE IF NOT EXISTS games (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   title TEXT NOT NULL,
@@ -66,7 +64,7 @@ CREATE TABLE IF NOT EXISTS games (
   created_by UUID REFERENCES profiles(id)
 );
 
--- Ensure columns exist if table was already created
+-- Ensure columns exist
 ALTER TABLE games ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT now();
 ALTER TABLE games ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES profiles(id);
 
@@ -206,7 +204,7 @@ GRANT ALL ON TABLE reports TO anon, authenticated, service_role;`;
 
       if (error) {
         if (error.code === '23503') {
-           throw new Error("Admin profile sync in progress. Please refresh the page and try again.");
+           throw new Error("Admin profile sync in progress. Please refresh and try again.");
         }
         throw error;
       }
@@ -238,6 +236,14 @@ GRANT ALL ON TABLE reports TO anon, authenticated, service_role;`;
     setEditingGame({
       ...editingGame,
       languages: currentLangs.filter(l => l !== lang)
+    });
+  };
+
+  const addUpdateNode = () => {
+    const currentUpdates = editingGame?.updates || [];
+    setEditingGame({
+      ...editingGame,
+      updates: [...currentUpdates, { version: '', firmware: '', downloadUrl: '' }]
     });
   };
 
@@ -336,109 +342,98 @@ GRANT ALL ON TABLE reports TO anon, authenticated, service_role;`;
           <div className="flex-grow overflow-y-auto p-12 custom-scrollbar">
             
             {activeTab === 'catalog' && editingGame && (
-              <div className="max-w-4xl mx-auto space-y-10 pb-12 animate-fade">
+              <div className="max-w-4xl mx-auto space-y-8 pb-12 animate-fade">
+                {/* 1. Core Metadata */}
                 <div className="bg-slate-50 p-10 rounded-[3rem] border border-slate-100 space-y-8">
                   <div className="grid grid-cols-2 gap-8">
                     <div className="col-span-2 space-y-2">
                       <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest ml-2 flex items-center gap-2"><Gamepad2 className="w-3 h-3"/> Game Title</label>
-                      <input type="text" value={editingGame.title || ''} onChange={e => setEditingGame({...editingGame, title: e.target.value})} className="w-full p-5 bg-white border border-slate-200 rounded-2xl font-bold outline-none focus:border-[#0072ce] transition-all" placeholder="Enter full game name" />
+                      <input type="text" value={editingGame.title || ''} onChange={e => setEditingGame({...editingGame, title: e.target.value})} className="w-full p-5 bg-white border border-slate-200 rounded-2xl font-bold outline-none focus:border-[#0072ce]" placeholder="Enter full game name" />
                     </div>
                     <div className="space-y-2">
                       <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest ml-2">Platform</label>
                       <select value={editingGame.platform || 'PS4'} onChange={e => setEditingGame({...editingGame, platform: e.target.value as any})} className="w-full p-5 bg-white border border-slate-200 rounded-2xl font-bold outline-none">
                         <option value="PS4">PlayStation 4</option>
                         <option value="PS5">PlayStation 5</option>
-                        <option value="Both">Cross-Gen (Both)</option>
+                        <option value="Both">Both</option>
                       </select>
                     </div>
                     <div className="space-y-2">
-                      <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest ml-2">Genre/Category</label>
+                      <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest ml-2">Genre</label>
                       <input type="text" value={editingGame.category || ''} onChange={e => setEditingGame({...editingGame, category: e.target.value})} className="w-full p-5 bg-white border border-slate-200 rounded-2xl font-bold outline-none" placeholder="Action, RPG, etc." />
-                    </div>
-                    <div className="col-span-2 space-y-2">
-                      <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest ml-2 flex items-center gap-2"><FileText className="w-3 h-3"/> Description</label>
-                      <textarea value={editingGame.description || ''} onChange={e => setEditingGame({...editingGame, description: e.target.value})} className="w-full p-5 bg-white border border-slate-200 rounded-2xl font-bold outline-none h-32 resize-none" placeholder="Enter short game overview..." />
                     </div>
                   </div>
                 </div>
 
-                <div className="bg-slate-50 p-10 rounded-[3rem] border border-slate-100 space-y-8">
-                   <h4 className="text-[10px] font-black text-[#0072ce] uppercase tracking-[0.2em] mb-4 flex items-center gap-2"><LinkIcon className="w-3.5 h-3.5" /> Core Assets</h4>
-                   <div className="space-y-6">
+                {/* 2. Updates & Languages (CRITICAL) */}
+                <div className="grid grid-cols-2 gap-6">
+                  {/* Updates Column */}
+                  <div className="bg-slate-50 p-8 rounded-[2.5rem] border border-slate-100 flex flex-col gap-6">
+                    <div className="flex justify-between items-center border-b border-slate-200 pb-4">
+                      <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest flex items-center gap-2"><Layers className="w-3.5 h-3.5 text-[#0072ce]"/> fpkg Updates</label>
+                      <button onClick={addUpdateNode} className="text-[9px] font-black text-[#0072ce] bg-white px-3 py-1.5 rounded-lg border border-slate-100 shadow-sm hover:bg-[#0072ce] hover:text-white transition-all flex items-center gap-1">
+                        <Plus className="w-3 h-3"/> Add Update
+                      </button>
+                    </div>
+                    <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                      {(editingGame.updates || []).map((upd, idx) => (
+                        <div key={idx} className="bg-white p-4 rounded-2xl border border-slate-200 flex flex-col gap-3 relative group">
+                          <div className="flex gap-2">
+                            <input placeholder="v1.0" className="w-1/3 p-2 bg-slate-50 rounded-lg text-[10px] font-black border border-transparent focus:border-[#0072ce]" value={upd.version} onChange={e => {
+                              const n = [...(editingGame.updates || [])]; n[idx].version = e.target.value; setEditingGame({...editingGame, updates: n});
+                            }} />
+                            <input placeholder="FW 9.0" className="w-2/3 p-2 bg-slate-50 rounded-lg text-[10px] font-black border border-transparent focus:border-[#0072ce]" value={upd.firmware} onChange={e => {
+                              const n = [...(editingGame.updates || [])]; n[idx].firmware = e.target.value; setEditingGame({...editingGame, updates: n});
+                            }} />
+                          </div>
+                          <input placeholder="Update URL" className="p-2 bg-slate-50 rounded-lg text-[10px] font-bold border border-transparent focus:border-[#0072ce]" value={upd.downloadUrl} onChange={e => {
+                            const n = [...(editingGame.updates || [])]; n[idx].downloadUrl = e.target.value; setEditingGame({...editingGame, updates: n});
+                          }} />
+                          <button onClick={() => setEditingGame({...editingGame, updates: editingGame.updates?.filter((_,i)=>i!==idx)})} className="absolute top-2 right-2 p-1 text-red-500 hover:bg-red-50 rounded-md opacity-0 group-hover:opacity-100 transition-all"><Trash2 className="w-3.5 h-3.5"/></button>
+                        </div>
+                      ))}
+                      {(editingGame.updates || []).length === 0 && <p className="text-[9px] font-bold text-slate-400 uppercase italic text-center py-4">No updates added</p>}
+                    </div>
+                  </div>
+
+                  {/* Languages Column */}
+                  <div className="bg-slate-50 p-8 rounded-[2.5rem] border border-slate-100 flex flex-col gap-6">
+                    <div className="flex justify-between items-center border-b border-slate-200 pb-4">
+                      <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest flex items-center gap-2"><Languages className="w-3.5 h-3.5 text-[#0072ce]"/> Languages</label>
+                    </div>
+                    <div className="flex gap-2">
+                      <input type="text" value={newLang} onChange={e => setNewLang(e.target.value)} onKeyDown={e => e.key === 'Enter' && addLanguage()} placeholder="e.g. Arabic" className="flex-grow p-3 bg-white border border-slate-200 rounded-xl font-bold text-[10px] outline-none" />
+                      <button onClick={addLanguage} className="bg-[#0072ce] text-white p-3 rounded-xl hover:bg-[#005bb8] transition-all"><Plus className="w-4 h-4"/></button>
+                    </div>
+                    <div className="flex flex-wrap gap-2 max-h-[150px] overflow-y-auto">
+                      {(editingGame.languages || []).map(lang => (
+                        <div key={lang} className="bg-white border border-slate-200 px-3 py-1.5 rounded-lg flex items-center gap-2 shadow-sm">
+                          <span className="text-[9px] font-black uppercase tracking-wider">{lang}</span>
+                          <button onClick={() => removeLanguage(lang)} className="text-slate-300 hover:text-red-500"><X className="w-3 h-3"/></button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. Asset URLs */}
+                <div className="bg-slate-50 p-10 rounded-[3rem] border border-slate-100 space-y-6">
+                   <h4 className="text-[10px] font-black text-[#0072ce] uppercase tracking-widest flex items-center gap-2"><LinkIcon className="w-3.5 h-3.5" /> Distribution Nodes</h4>
+                   <div className="space-y-4">
                       <div className="space-y-2">
-                        <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest ml-2 flex items-center gap-2"><Download className="w-3 h-3 text-emerald-500" /> Primary Download URL</label>
-                        <input type="text" value={editingGame.downloadUrl || ''} onChange={e => setEditingGame({...editingGame, downloadUrl: e.target.value})} className="w-full p-5 bg-white border border-slate-200 rounded-2xl font-bold outline-none focus:border-emerald-500" placeholder="Direct link" />
+                        <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest ml-2 flex items-center gap-1"><Download className="w-3 h-3 text-emerald-500" /> Primary pkg/zip URL</label>
+                        <input type="text" value={editingGame.downloadUrl || ''} onChange={e => setEditingGame({...editingGame, downloadUrl: e.target.value})} className="w-full p-4 bg-white border border-slate-200 rounded-xl font-bold text-xs outline-none focus:border-emerald-500" placeholder="Main game link" />
                       </div>
                       <div className="space-y-2">
-                        <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest ml-2 flex items-center gap-2"><ImageIcon className="w-3 h-3 text-blue-500" /> Cover Image URL</label>
-                        <input type="text" value={editingGame.imageUrl || ''} onChange={e => setEditingGame({...editingGame, imageUrl: e.target.value})} className="w-full p-5 bg-white border border-slate-200 rounded-2xl font-bold outline-none" placeholder="Image link" />
+                        <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest ml-2 flex items-center gap-1"><ImageIcon className="w-3 h-3 text-blue-500" /> Cover Art URL</label>
+                        <input type="text" value={editingGame.imageUrl || ''} onChange={e => setEditingGame({...editingGame, imageUrl: e.target.value})} className="w-full p-4 bg-white border border-slate-200 rounded-xl font-bold text-xs outline-none" placeholder="Image link" />
                       </div>
                    </div>
                 </div>
 
-                {/* Updates & Languages Section */}
-                <div className="grid grid-cols-2 gap-8">
-                  {/* Languages Column */}
-                  <div className="bg-slate-50 p-10 rounded-[3rem] border border-slate-100 flex flex-col gap-6">
-                    <div className="flex justify-between items-center border-b border-slate-200 pb-4">
-                      <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest flex items-center gap-2"><Languages className="w-3.5 h-3.5 text-[#0072ce]"/> Language Support</label>
-                    </div>
-                    
-                    <div className="flex gap-2">
-                      <input 
-                        type="text" 
-                        value={newLang} 
-                        onChange={e => setNewLang(e.target.value)}
-                        onKeyDown={e => e.key === 'Enter' && addLanguage()}
-                        placeholder="e.g. Arabic" 
-                        className="flex-grow p-4 bg-white border border-slate-200 rounded-2xl font-bold text-xs outline-none focus:border-[#0072ce]"
-                      />
-                      <button onClick={addLanguage} className="bg-[#0072ce] text-white p-4 rounded-2xl shadow-lg shadow-blue-500/20 hover:bg-[#005bb8] transition-all"><Plus className="w-5 h-5"/></button>
-                    </div>
-
-                    <div className="flex flex-wrap gap-2">
-                      {(editingGame.languages || []).map(lang => (
-                        <div key={lang} className="bg-white border border-slate-200 px-4 py-2 rounded-xl flex items-center gap-2 shadow-sm group">
-                          <span className="text-[10px] font-black uppercase text-slate-900 tracking-wider">{lang}</span>
-                          <button onClick={() => removeLanguage(lang)} className="text-slate-300 hover:text-red-500 transition-colors"><X className="w-3.5 h-3.5"/></button>
-                        </div>
-                      ))}
-                      {(editingGame.languages || []).length === 0 && <p className="text-[10px] font-bold text-slate-400 uppercase italic">No languages added</p>}
-                    </div>
-                  </div>
-
-                  {/* Updates Column */}
-                  <div className="bg-slate-50 p-10 rounded-[3rem] border border-slate-100 flex flex-col gap-6">
-                    <div className="flex justify-between items-center border-b border-slate-200 pb-4">
-                      <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest flex items-center gap-2"><Layers className="w-3.5 h-3.5 text-[#0072ce]"/> fpkg Updates</label>
-                      <button onClick={() => setEditingGame({...editingGame, updates: [...(editingGame.updates || []), {version:'', firmware:'', downloadUrl:''}]})} className="text-[9px] font-black text-[#0072ce] flex items-center gap-1 hover:underline"><Plus className="w-3 h-3"/> Add</button>
-                    </div>
-                    
-                    <div className="space-y-3 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
-                      {(editingGame.updates || []).map((upd, idx) => (
-                        <div key={idx} className="bg-white p-4 rounded-2xl border border-slate-200 flex flex-col gap-3 relative group">
-                          <div className="flex gap-2">
-                            <input placeholder="v1.30" className="w-1/3 p-2.5 bg-slate-50 rounded-lg text-[10px] font-black border border-transparent focus:border-[#0072ce] outline-none" value={upd.version} onChange={e => {
-                              const n = [...(editingGame.updates || [])]; n[idx].version = e.target.value; setEditingGame({...editingGame, updates: n});
-                            }} />
-                            <input placeholder="FW 11.00" className="w-2/3 p-2.5 bg-slate-50 rounded-lg text-[10px] font-black border border-transparent focus:border-[#0072ce] outline-none" value={upd.firmware} onChange={e => {
-                              const n = [...(editingGame.updates || [])]; n[idx].firmware = e.target.value; setEditingGame({...editingGame, updates: n});
-                            }} />
-                          </div>
-                          <input placeholder="Direct Download Link" className="p-2.5 bg-slate-50 rounded-lg text-[10px] font-bold border border-transparent focus:border-[#0072ce] outline-none" value={upd.downloadUrl} onChange={e => {
-                            const n = [...(editingGame.updates || [])]; n[idx].downloadUrl = e.target.value; setEditingGame({...editingGame, updates: n});
-                          }} />
-                          <button onClick={() => setEditingGame({...editingGame, updates: editingGame.updates?.filter((_,i)=>i!==idx)})} className="absolute top-2 right-2 p-1.5 text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all"><Trash2 className="w-4 h-4"/></button>
-                        </div>
-                      ))}
-                      {(editingGame.updates || []).length === 0 && <p className="text-[10px] font-bold text-slate-400 uppercase italic">No updates defined</p>}
-                    </div>
-                  </div>
-                </div>
-
                 <div className="flex gap-4">
                   <button onClick={handleSaveGame} disabled={isSaving} className="flex-grow py-6 bg-[#0072ce] text-white rounded-[2rem] font-black uppercase text-[11px] tracking-widest shadow-2xl">
-                    {isSaving ? 'Synchronizing...' : (editingGame.id ? 'Save Changes' : 'Commit New Entry')}
+                    {isSaving ? 'Saving...' : (editingGame.id ? 'Confirm Changes' : 'Add to Vault')}
                   </button>
                   <button onClick={() => setEditingGame(null)} className="px-12 py-6 bg-slate-100 text-slate-400 rounded-[2rem] font-black uppercase text-[11px]">Cancel</button>
                 </div>
@@ -455,18 +450,19 @@ GRANT ALL ON TABLE reports TO anon, authenticated, service_role;`;
                         <p className="font-black text-slate-900 uppercase text-sm">{g.title}</p>
                         <div className="flex items-center gap-3 mt-1">
                           <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{g.platform}</p>
-                          <span className="text-[8px] font-black text-[#0072ce] uppercase">{(g.languages || []).length} Languages</span>
+                          <span className="text-[8px] font-black text-[#0072ce] uppercase">{g.updates?.length || 0} UPDATES</span>
+                          <span className="text-[8px] font-black text-slate-400 uppercase">{(g.languages || []).length} LANGS</span>
                         </div>
                         <div className="flex items-center gap-2 mt-2 opacity-60 group-hover:opacity-100 transition-opacity">
                           <History className="w-3 h-3 text-slate-400" />
                           <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">
-                            Added by {getAdminHandle(g)} on {g.created_at ? new Date(g.created_at).toLocaleString() : 'LEGACY'}
+                            Added by {getAdminHandle(g)} on {g.created_at ? new Date(g.created_at).toLocaleDateString() : 'LEGACY'}
                           </p>
                         </div>
                       </div>
                     </div>
                     <div className="flex gap-3">
-                      <button onClick={() => setEditingGame(g)} className="text-[10px] font-black uppercase tracking-widest text-[#0072ce] px-8 py-3 bg-white border border-slate-100 rounded-xl hover:bg-[#0072ce] hover:text-white transition-all">Edit</button>
+                      <button onClick={() => setEditingGame(g)} className="text-[10px] font-black uppercase tracking-widest text-[#0072ce] px-8 py-3 bg-white border border-slate-100 rounded-xl hover:bg-[#0072ce] hover:text-white transition-all shadow-sm">Edit</button>
                       <button onClick={async () => { if(confirm(`Delete ${g.title}?`)) { await supabase.from('games').delete().eq('id', g.id); onUpdateGame(); showToast('info', 'Purged', 'Game removed.'); } }} className="p-3 text-red-500 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-5 h-5" /></button>
                     </div>
                   </div>
@@ -491,18 +487,17 @@ GRANT ALL ON TABLE reports TO anon, authenticated, service_role;`;
                               req.status === 'pending' ? 'bg-amber-100 text-amber-600' : 
                               req.status === 'added' ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'
                             }`}>{req.status}</span>
-                            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">{new Date(req.created_at).toLocaleString()}</span>
                           </div>
                         </div>
                        </div>
                        <div className="flex gap-2">
                          {req.status === 'pending' && (
                            <>
-                            <button onClick={() => updateRequestStatus(req.id, 'added')} className="p-3 bg-emerald-500 text-white rounded-xl hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-500/20"><Check className="w-5 h-5"/></button>
-                            <button onClick={() => updateRequestStatus(req.id, 'rejected')} className="p-3 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-all shadow-lg shadow-red-500/20"><Ban className="w-5 h-5"/></button>
+                            <button onClick={() => updateRequestStatus(req.id, 'added')} className="p-3 bg-emerald-500 text-white rounded-xl hover:bg-emerald-600 transition-all"><Check className="w-5 h-5"/></button>
+                            <button onClick={() => updateRequestStatus(req.id, 'rejected')} className="p-3 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-all"><Ban className="w-5 h-5"/></button>
                            </>
                          )}
-                         <button onClick={async () => { if(confirm('Delete this request permanently?')) { await supabase.from('requests').delete().eq('id', req.id); fetchRequests(); } }} className="p-3 text-slate-300 hover:text-red-500 transition-colors"><Trash2 className="w-5 h-5"/></button>
+                         <button onClick={async () => { if(confirm('Delete permanently?')) { await supabase.from('requests').delete().eq('id', req.id); fetchRequests(); } }} className="p-3 text-slate-300 hover:text-red-500 transition-colors"><Trash2 className="w-5 h-5"/></button>
                        </div>
                     </div>
                   ))
@@ -561,7 +556,7 @@ GRANT ALL ON TABLE reports TO anon, authenticated, service_role;`;
                   <div className="bg-red-50 p-8 rounded-[2.5rem] border border-red-100">
                     <AlertCircle className="w-6 h-6 text-red-500 mb-4" />
                     <p className="text-3xl font-black text-red-600 tracking-tighter">{dashboardStats.pendingReports}</p>
-                    <p className="text-[9px] font-black text-red-400 uppercase tracking-widest">Security Alerts</p>
+                    <p className="text-[9px] font-black text-red-400 uppercase tracking-widest">Reports</p>
                   </div>
                 </div>
               </div>
@@ -590,7 +585,7 @@ GRANT ALL ON TABLE reports TO anon, authenticated, service_role;`;
                 <div className="bg-slate-900 rounded-[3rem] p-12 relative overflow-hidden group">
                   <div className="flex justify-between items-start mb-10">
                     <div>
-                      <h4 className="text-white text-xl font-black uppercase">Infrastructure Sync v5.4</h4>
+                      <h4 className="text-white text-xl font-black uppercase">Sync Protocol v5.4</h4>
                     </div>
                     <button 
                       onClick={() => { navigator.clipboard.writeText(ultimateSql); showToast('success', 'Sync Script Copied', 'Paste into Supabase SQL tab.'); }}
