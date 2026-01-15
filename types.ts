@@ -2,7 +2,6 @@
 export type Platform = 'PS4' | 'PS5' | 'Both';
 
 export interface GameUpdate {
-  id: string;
   version: string;
   firmware: string;
   downloadUrl: string;
@@ -46,6 +45,7 @@ export interface User {
   username: string;
   email: string;
   isAdmin: boolean;
+  isSuperAdmin?: boolean; // admin@fpkg.com
 }
 
 export interface AuthState {

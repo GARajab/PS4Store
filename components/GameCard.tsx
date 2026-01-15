@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
-import { Game } from '../types';
-import { Download, Star, CheckCircle2, Info, Globe, ShieldAlert, Play, Plus } from 'lucide-react';
+import { Game, GameUpdate } from '../types';
+import { Download, Star, CheckCircle2, Info, Globe, ShieldAlert, Play, Layers, X } from 'lucide-react';
 import { PulseSpinner } from './LoadingSpinner';
 import { useToast } from '../context/ToastContext';
 
@@ -20,23 +20,12 @@ const GameCard: React.FC<GameCardProps> = ({ game, onDownload, onReport, onWatch
   const { showToast } = useToast();
   const [isReporting, setIsReporting] = useState(false);
   const [downloadState, setDownloadState] = useState<'idle' | 'preparing' | 'done'>('idle');
+  const [showDetails, setShowDetails] = useState(false);
 
-  const handleReport = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (isReporting) return;
-    
-    if (!isAuthenticated) {
-      onReport(game);
-      return;
-    }
-
-    setIsReporting(true);
-    const success = await onReport(game);
-    if (success) {
-      showToast('warning', 'Report Logged', `${game.title} flag recorded.`);
-    }
-    setIsReporting(false);
-  };
+  // Latest version logic
+  const latestUpdate = game.updates && game.updates.length > 0 
+    ? game.updates.reduce((prev, current) => (parseFloat(prev.version) > parseFloat(current.version)) ? prev : current)
+    : null;
 
   const handleDownloadClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -44,8 +33,6 @@ const GameCard: React.FC<GameCardProps> = ({ game, onDownload, onReport, onWatch
       onDownload(game);
       return;
     }
-    if (downloadState !== 'idle') return;
-    
     setDownloadState('preparing');
     setTimeout(() => {
       onDownload(game);
@@ -54,113 +41,85 @@ const GameCard: React.FC<GameCardProps> = ({ game, onDownload, onReport, onWatch
     }, 1500);
   };
 
-  const handleTrailerClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    onWatchTrailer(game);
-  };
-
   return (
     <div className="group relative flex flex-col h-full animate-fade">
-      {/* Authentic Vertical Cover Area */}
       <div className="relative game-cover-ratio overflow-hidden rounded-[1.5rem] bg-slate-200 shadow-lg card-transition hover-glow group-hover:-translate-y-3 border border-slate-100">
-        <img 
-          src={game.imageUrl} 
-          alt={game.title} 
-          className="w-full h-full object-cover transition-transform duration-1000 ease-out group-hover:scale-105"
-        />
+        <img src={game.imageUrl} alt={game.title} className="w-full h-full object-cover transition-transform duration-1000 ease-out group-hover:scale-105" />
         
-        {/* Cinematic Gradient Mask (Light Overlay) */}
-        <div className="absolute inset-0 bg-gradient-to-t from-[#0072ce]/30 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-all duration-500" />
-        
-        {/* System Labels */}
         <div className="absolute top-4 left-4 flex flex-col gap-2">
           <div className="px-2.5 py-1 bg-white/90 backdrop-blur-md border border-slate-200 rounded-lg text-[8px] font-black tracking-[0.2em] text-[#0072ce] uppercase shadow-sm">
             {game.platform}
           </div>
-          {isSaved && (
-            <div className="px-2.5 py-1 bg-[#0072ce] rounded-lg text-[8px] font-black tracking-[0.1em] text-white shadow-lg shadow-blue-500/20">
-              OWNED
+          {latestUpdate && (
+            <div className="px-2.5 py-1 bg-emerald-500 rounded-lg text-[8px] font-black tracking-[0.1em] text-white shadow-lg flex items-center gap-1">
+              <Layers className="w-2.5 h-2.5" /> v{latestUpdate.version}
             </div>
           )}
         </div>
 
-        {/* Pro Overlay Menu */}
-        <div className="absolute inset-0 flex flex-col justify-end p-5 opacity-0 group-hover:opacity-100 transition-all duration-500 translate-y-6 group-hover:translate-y-0">
+        <div className="absolute inset-0 flex flex-col justify-end p-5 opacity-0 group-hover:opacity-100 transition-all duration-500 translate-y-6 group-hover:translate-y-0 bg-gradient-to-t from-slate-900/80 via-transparent to-transparent">
           <div className="flex flex-col gap-3">
-            
-            {/* Primary Download - PS Blue */}
             <button 
               onClick={handleDownloadClick}
               disabled={downloadState === 'preparing'}
-              className={`w-full h-12 rounded-xl font-black text-[10px] tracking-[0.15em] uppercase flex items-center justify-center gap-3 btn-primary ${
-                downloadState === 'done' ? 'bg-emerald-500 shadow-emerald-500/30' : ''
-              }`}
+              className={`w-full h-12 rounded-xl font-black text-[10px] tracking-[0.15em] uppercase flex items-center justify-center gap-3 btn-primary ${downloadState === 'done' ? 'bg-emerald-500 shadow-emerald-500/30' : ''}`}
             >
               {downloadState === 'preparing' ? <PulseSpinner /> : downloadState === 'done' ? <CheckCircle2 className="w-4 h-4" /> : <Download className="w-4 h-4" />}
-              {downloadState === 'idle' && 'Get Game'}
-              {downloadState === 'done' && 'Available'}
+              {downloadState === 'idle' ? 'Get Game' : downloadState === 'done' ? 'Ready' : ''}
             </button>
 
-            {/* Utility Row - White Glass Style */}
             <div className="flex gap-2">
-              <button 
-                onClick={handleTrailerClick}
-                className="flex-grow h-11 rounded-xl bg-white border border-slate-200 flex items-center justify-center gap-2 text-slate-900 hover:text-[#0072ce] font-black text-[9px] tracking-widest uppercase transition-all shadow-sm"
-              >
-                <Play className="w-3.5 h-3.5 fill-[#0072ce] text-[#0072ce]" />
-                Trailer
+              <button onClick={(e) => { e.stopPropagation(); onWatchTrailer(game); }} className="flex-grow h-11 rounded-xl bg-white flex items-center justify-center gap-2 text-slate-900 font-black text-[9px] uppercase tracking-widest shadow-sm hover:bg-[#0072ce] hover:text-white transition-all">
+                <Play className="w-3.5 h-3.5 fill-current" /> Trailer
               </button>
-              
-              <button 
-                onClick={handleReport}
-                className="w-11 h-11 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-400 hover:text-red-500 transition-colors shadow-sm"
-                title="Flag Issues"
-              >
-                <ShieldAlert className="w-4 h-4" />
+              <button onClick={(e) => { e.stopPropagation(); setShowDetails(!showDetails); }} className="w-11 h-11 rounded-xl bg-white border flex items-center justify-center text-slate-400 hover:text-[#0072ce] transition-colors shadow-sm">
+                <Info className="w-4 h-4" />
               </button>
-            </div>
-
-            {/* Micro Metadata */}
-            <div className="flex items-center justify-center gap-5 mt-1 border-t border-slate-100/20 pt-3">
-               <div className="flex items-center gap-1.5 text-white">
-                  <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
-                  <span className="text-[9px] font-black uppercase tracking-widest">{game.rating.toFixed(1)}</span>
-               </div>
-               <div className="flex items-center gap-1.5 text-white">
-                  <Globe className="w-3 h-3 text-blue-300" />
-                  <span className="text-[9px] font-black uppercase tracking-widest">{game.languages ? game.languages[0] : 'Intl'}</span>
-               </div>
             </div>
           </div>
         </div>
+
+        {/* Info Modal Trigger Overlay */}
+        {showDetails && (
+          <div className="absolute inset-0 bg-white/95 backdrop-blur-lg p-6 z-20 flex flex-col animate-fade">
+             {/* Fix: Added X icon from lucide-react */}
+             <button onClick={() => setShowDetails(false)} className="absolute top-4 right-4 p-2 text-slate-400 hover:text-red-500"><X className="w-5 h-5" /></button>
+             <h4 className="text-[10px] font-black uppercase text-[#0072ce] tracking-widest mb-4 flex items-center gap-2"><Globe className="w-3 h-3" /> System Specs</h4>
+             
+             <div className="space-y-4 overflow-y-auto custom-scrollbar">
+                <div>
+                  <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Languages</p>
+                  <div className="flex flex-wrap gap-1">
+                    {(game.languages || ['English']).map(lang => (
+                      <span key={lang} className="px-2 py-0.5 bg-slate-100 text-[8px] font-bold rounded uppercase">{lang}</span>
+                    ))}
+                  </div>
+                </div>
+
+                {game.updates && game.updates.length > 0 && (
+                  <div>
+                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Available fpkg Updates</p>
+                    <div className="space-y-1">
+                      {game.updates.map((upd, i) => (
+                        <div key={i} className="flex items-center justify-between p-2 bg-slate-50 border rounded-lg">
+                           <span className="text-[9px] font-black">v{upd.version}</span>
+                           <span className="text-[7px] font-bold text-slate-400">FW {upd.firmware}+</span>
+                           <button onClick={() => window.open(upd.downloadUrl)} className="p-1 hover:text-[#0072ce]"><Download className="w-3 h-3" /></button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+             </div>
+          </div>
+        )}
       </div>
 
-      {/* Product Information - Fixed Height for Grid Uniformity */}
       <div className="mt-4 px-1 min-h-[4.5rem] flex flex-col justify-start">
-        <div className="flex justify-between items-start gap-2">
-           <div className="flex-grow">
-             <h3 className="text-[14px] font-black text-[#0072ce] font-outfit uppercase tracking-tight leading-[1.2] group-hover:text-slate-900 transition-colors line-clamp-2 min-h-[2.1rem]">
-               {game.title}
-             </h3>
-             <div className="flex items-center gap-2 mt-1.5">
-               <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
-                 {game.category}
-               </p>
-               <div className="w-1 h-1 bg-slate-200 rounded-full" />
-               <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
-                 Official
-               </p>
-             </div>
-           </div>
-
-           {isAdmin && (
-            <button 
-              onClick={(e) => { e.stopPropagation(); onEdit?.(game); }}
-              className="p-1 text-slate-300 hover:text-[#0072ce] hover:bg-slate-50 rounded-lg transition-all shrink-0"
-            >
-              <Info className="w-4 h-4" />
-            </button>
-          )}
+        <h3 className="text-[14px] font-black text-[#0072ce] font-outfit uppercase tracking-tight line-clamp-2">{game.title}</h3>
+        <div className="flex items-center gap-2 mt-1.5">
+           <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{game.category}</p>
+           {isSaved && <CheckCircle2 className="w-3 h-3 text-emerald-500" />}
         </div>
       </div>
     </div>
