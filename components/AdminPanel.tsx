@@ -8,7 +8,7 @@ import {
   ChevronRight, ArrowUpRight, Clock, Box, MessageSquarePlus, 
   AlertTriangle, Users, ShieldAlert, Globe, Layers, Download,
   User as UserIcon, RefreshCcw, Zap, Activity, Image as ImageIcon,
-  FileText, Link as LinkIcon, Gamepad2, History, Check, Ban
+  FileText, Link as LinkIcon, Gamepad2, History, Check, Ban, Languages
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useToast } from '../context/ToastContext';
@@ -27,6 +27,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ games, currentUser, onUpdateGam
   const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
   const [editingGame, setEditingGame] = useState<Partial<Game> | null>(null);
+  const [newLang, setNewLang] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [reports, setReports] = useState<any[]>([]);
   const [requests, setRequests] = useState<GameRequest[]>([]);
@@ -220,6 +221,26 @@ GRANT ALL ON TABLE reports TO anon, authenticated, service_role;`;
     }
   };
 
+  const addLanguage = () => {
+    if (!newLang.trim()) return;
+    const currentLangs = editingGame?.languages || [];
+    if (!currentLangs.includes(newLang.trim())) {
+      setEditingGame({
+        ...editingGame,
+        languages: [...currentLangs, newLang.trim()]
+      });
+    }
+    setNewLang('');
+  };
+
+  const removeLanguage = (lang: string) => {
+    const currentLangs = editingGame?.languages || [];
+    setEditingGame({
+      ...editingGame,
+      languages: currentLangs.filter(l => l !== lang)
+    });
+  };
+
   const dashboardStats = useMemo(() => ({
     downloads: games.reduce((acc, g) => acc + (g.download_count || 0), 0),
     pendingRequests: requests.filter(r => r.status === 'pending').length,
@@ -257,7 +278,7 @@ GRANT ALL ON TABLE reports TO anon, authenticated, service_role;`;
               { id: 'requests', label: 'Requests', icon: MessageSquarePlus, alert: dashboardStats.pendingRequests },
               ...(isSuperAdmin ? [{ id: 'users', label: 'User Roles', icon: Users }] : []),
               { id: 'reports', label: 'Security', icon: AlertCircle, alert: dashboardStats.pendingReports },
-              { id: 'system', label: 'System', icon: Settings },
+              ...(isSuperAdmin ? [{ id: 'system', label: 'System', icon: Settings }] : []),
             ].map((item) => (
               <button
                 key={item.id}
@@ -355,6 +376,66 @@ GRANT ALL ON TABLE reports TO anon, authenticated, service_role;`;
                    </div>
                 </div>
 
+                {/* Updates & Languages Section */}
+                <div className="grid grid-cols-2 gap-8">
+                  {/* Languages Column */}
+                  <div className="bg-slate-50 p-10 rounded-[3rem] border border-slate-100 flex flex-col gap-6">
+                    <div className="flex justify-between items-center border-b border-slate-200 pb-4">
+                      <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest flex items-center gap-2"><Languages className="w-3.5 h-3.5 text-[#0072ce]"/> Language Support</label>
+                    </div>
+                    
+                    <div className="flex gap-2">
+                      <input 
+                        type="text" 
+                        value={newLang} 
+                        onChange={e => setNewLang(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && addLanguage()}
+                        placeholder="e.g. Arabic" 
+                        className="flex-grow p-4 bg-white border border-slate-200 rounded-2xl font-bold text-xs outline-none focus:border-[#0072ce]"
+                      />
+                      <button onClick={addLanguage} className="bg-[#0072ce] text-white p-4 rounded-2xl shadow-lg shadow-blue-500/20 hover:bg-[#005bb8] transition-all"><Plus className="w-5 h-5"/></button>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      {(editingGame.languages || []).map(lang => (
+                        <div key={lang} className="bg-white border border-slate-200 px-4 py-2 rounded-xl flex items-center gap-2 shadow-sm group">
+                          <span className="text-[10px] font-black uppercase text-slate-900 tracking-wider">{lang}</span>
+                          <button onClick={() => removeLanguage(lang)} className="text-slate-300 hover:text-red-500 transition-colors"><X className="w-3.5 h-3.5"/></button>
+                        </div>
+                      ))}
+                      {(editingGame.languages || []).length === 0 && <p className="text-[10px] font-bold text-slate-400 uppercase italic">No languages added</p>}
+                    </div>
+                  </div>
+
+                  {/* Updates Column */}
+                  <div className="bg-slate-50 p-10 rounded-[3rem] border border-slate-100 flex flex-col gap-6">
+                    <div className="flex justify-between items-center border-b border-slate-200 pb-4">
+                      <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest flex items-center gap-2"><Layers className="w-3.5 h-3.5 text-[#0072ce]"/> fpkg Updates</label>
+                      <button onClick={() => setEditingGame({...editingGame, updates: [...(editingGame.updates || []), {version:'', firmware:'', downloadUrl:''}]})} className="text-[9px] font-black text-[#0072ce] flex items-center gap-1 hover:underline"><Plus className="w-3 h-3"/> Add</button>
+                    </div>
+                    
+                    <div className="space-y-3 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
+                      {(editingGame.updates || []).map((upd, idx) => (
+                        <div key={idx} className="bg-white p-4 rounded-2xl border border-slate-200 flex flex-col gap-3 relative group">
+                          <div className="flex gap-2">
+                            <input placeholder="v1.30" className="w-1/3 p-2.5 bg-slate-50 rounded-lg text-[10px] font-black border border-transparent focus:border-[#0072ce] outline-none" value={upd.version} onChange={e => {
+                              const n = [...(editingGame.updates || [])]; n[idx].version = e.target.value; setEditingGame({...editingGame, updates: n});
+                            }} />
+                            <input placeholder="FW 11.00" className="w-2/3 p-2.5 bg-slate-50 rounded-lg text-[10px] font-black border border-transparent focus:border-[#0072ce] outline-none" value={upd.firmware} onChange={e => {
+                              const n = [...(editingGame.updates || [])]; n[idx].firmware = e.target.value; setEditingGame({...editingGame, updates: n});
+                            }} />
+                          </div>
+                          <input placeholder="Direct Download Link" className="p-2.5 bg-slate-50 rounded-lg text-[10px] font-bold border border-transparent focus:border-[#0072ce] outline-none" value={upd.downloadUrl} onChange={e => {
+                            const n = [...(editingGame.updates || [])]; n[idx].downloadUrl = e.target.value; setEditingGame({...editingGame, updates: n});
+                          }} />
+                          <button onClick={() => setEditingGame({...editingGame, updates: editingGame.updates?.filter((_,i)=>i!==idx)})} className="absolute top-2 right-2 p-1.5 text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all"><Trash2 className="w-4 h-4"/></button>
+                        </div>
+                      ))}
+                      {(editingGame.updates || []).length === 0 && <p className="text-[10px] font-bold text-slate-400 uppercase italic">No updates defined</p>}
+                    </div>
+                  </div>
+                </div>
+
                 <div className="flex gap-4">
                   <button onClick={handleSaveGame} disabled={isSaving} className="flex-grow py-6 bg-[#0072ce] text-white rounded-[2rem] font-black uppercase text-[11px] tracking-widest shadow-2xl">
                     {isSaving ? 'Synchronizing...' : (editingGame.id ? 'Save Changes' : 'Commit New Entry')}
@@ -374,6 +455,7 @@ GRANT ALL ON TABLE reports TO anon, authenticated, service_role;`;
                         <p className="font-black text-slate-900 uppercase text-sm">{g.title}</p>
                         <div className="flex items-center gap-3 mt-1">
                           <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{g.platform}</p>
+                          <span className="text-[8px] font-black text-[#0072ce] uppercase">{(g.languages || []).length} Languages</span>
                         </div>
                         <div className="flex items-center gap-2 mt-2 opacity-60 group-hover:opacity-100 transition-opacity">
                           <History className="w-3 h-3 text-slate-400" />
@@ -503,7 +585,7 @@ GRANT ALL ON TABLE reports TO anon, authenticated, service_role;`;
               </div>
             )}
 
-            {activeTab === 'system' && (
+            {activeTab === 'system' && isSuperAdmin && (
               <div className="space-y-8 animate-fade">
                 <div className="bg-slate-900 rounded-[3rem] p-12 relative overflow-hidden group">
                   <div className="flex justify-between items-start mb-10">
