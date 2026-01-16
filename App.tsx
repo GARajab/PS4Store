@@ -26,7 +26,7 @@ const LogoutOverlay: React.FC = () => (
     
     <div className="mt-12 text-center">
       <h2 className="text-2xl font-black text-white font-outfit uppercase tracking-tighter mb-2">Terminating Session</h2>
-      <p className="text-red-400 text-[10px] uppercase font-black tracking-[0.4em] opacity-80">Encrypting Vault Tunnel</p>
+      <p className="text-red-400 text-[10px] uppercase font-black tracking-widest opacity-80">Encrypting Vault Tunnel</p>
     </div>
 
     {/* Progress Bar */}
@@ -109,7 +109,7 @@ const RequestGameModal: React.FC<{ isOpen: boolean; onClose: () => void; user: U
             <MessageSquarePlus className="text-[#0072ce] w-8 h-8" />
           </div>
           <h2 className="text-3xl font-black text-slate-900 font-outfit uppercase tracking-tighter mb-2">Request Game</h2>
-          <p className="text-slate-400 text-[10px] uppercase font-black tracking-[0.4em]">Can't find it? We'll find it.</p>
+          <p className="text-slate-400 text-[10px] uppercase font-black tracking-widest">Can't find it? We'll find it.</p>
         </div>
 
         {isTableMissing ? (
@@ -335,8 +335,8 @@ const AppContent: React.FC = () => {
         <div className="mb-12 flex flex-col md:flex-row md:items-end justify-between gap-6">
            <div className="animate-fade">
              <div className="flex items-center gap-4 mb-3">
-               <h1 className="text-5xl font-black font-outfit uppercase tracking-tighter text-[#0072ce] leading-none">
-                 {viewMode === 'store' ? 'Digital Vault' : 'My Collection'}
+               <h1 className="text-3xl md:text-5xl font-black font-outfit uppercase tracking-tighter text-[#0072ce] leading-none">
+                 {viewMode === 'store' ? 'Playstation Games With Direct links' : 'My Collection'}
                </h1>
                {viewMode === 'library' && (
                  <button onClick={resetToFullStore} className="mt-1 flex items-center gap-2 px-4 py-1.5 bg-[#0072ce]/5 hover:bg-[#0072ce] text-[#0072ce] hover:text-white rounded-full text-[9px] font-black uppercase tracking-widest transition-all border border-[#0072ce]/10 shadow-sm">
@@ -360,8 +360,8 @@ const AppContent: React.FC = () => {
         </div>
 
         {isLoadingGames ? (
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-8">
-            {[...Array(10)].map((_, i) => <SkeletonCard key={i} />)}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-12">
+            {[...Array(8)].map((_, i) => <SkeletonCard key={i} />)}
           </div>
         ) : filteredGames.length === 0 ? (
           <div className="text-center py-40">
@@ -369,7 +369,7 @@ const AppContent: React.FC = () => {
             <h3 className="text-xl font-black text-slate-300 uppercase">No Data Found</h3>
           </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-x-8 gap-y-12">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-12 gap-y-16">
             {filteredGames.map(game => (
               <GameCard 
                 key={game.id} 
