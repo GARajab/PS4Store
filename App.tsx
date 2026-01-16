@@ -8,8 +8,43 @@ import AuthModal from './components/AuthModal';
 import AdminPanel from './components/AdminPanel';
 import TrailerModal from './components/TrailerModal';
 import { SkeletonCard, LogoSpinner } from './components/LoadingSpinner';
-import { Search, Sparkles, Database, Activity, WifiOff, RefreshCw, ShoppingBag, PlusCircle, XCircle, ArrowLeft, RotateCcw, MessageSquarePlus, X, Clock, CheckCircle, Ban, AlertTriangle } from 'lucide-react';
+import { Search, Sparkles, Database, Activity, WifiOff, RefreshCw, ShoppingBag, PlusCircle, XCircle, ArrowLeft, RotateCcw, MessageSquarePlus, X, Clock, CheckCircle, Ban, AlertTriangle, ShieldAlert } from 'lucide-react';
 import { ToastProvider, useToast } from './context/ToastContext';
+
+const LogoutOverlay: React.FC = () => (
+  <div className="fixed inset-0 z-[300] bg-slate-900/60 backdrop-blur-2xl flex flex-col items-center justify-center animate-fade">
+    <div className="relative">
+      {/* iOS Pulse Rings */}
+      <div className="absolute -inset-8 border-2 border-red-500/20 rounded-full animate-ping" />
+      <div className="absolute -inset-4 border-2 border-red-500/10 rounded-full animate-pulse" />
+      
+      {/* Lockdown Icon */}
+      <div className="relative w-24 h-24 bg-red-500 rounded-[2.5rem] shadow-[0_0_50px_rgba(239,68,68,0.4)] flex items-center justify-center border border-red-400 animate-modal">
+        <ShieldAlert className="w-10 h-10 text-white animate-pulse" />
+      </div>
+    </div>
+    
+    <div className="mt-12 text-center">
+      <h2 className="text-2xl font-black text-white font-outfit uppercase tracking-tighter mb-2">Terminating Session</h2>
+      <p className="text-red-400 text-[10px] uppercase font-black tracking-[0.4em] opacity-80">Encrypting Vault Tunnel</p>
+    </div>
+
+    {/* Progress Bar */}
+    <div className="mt-10 w-48 h-1 bg-white/10 rounded-full overflow-hidden border border-white/5">
+      <div className="h-full bg-red-500 animate-logout-progress" />
+    </div>
+
+    <style>{`
+      @keyframes logout-progress {
+        0% { width: 0%; }
+        100% { width: 100%; }
+      }
+      .animate-logout-progress {
+        animation: logout-progress 2s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+      }
+    `}</style>
+  </div>
+);
 
 const RequestGameModal: React.FC<{ isOpen: boolean; onClose: () => void; user: User | null; onAuthClick: () => void; onRequested: () => void }> = ({ isOpen, onClose, user, onAuthClick, onRequested }) => {
   const { showToast } = useToast();
@@ -134,6 +169,7 @@ const AppContent: React.FC = () => {
   const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [showRequestModal, setShowRequestModal] = useState(false);
   const [isLoadingGames, setIsLoadingGames] = useState(true);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'store' | 'library'>('store');
   const [libraryIds, setLibraryIds] = useState<string[]>([]);
@@ -173,7 +209,6 @@ const AppContent: React.FC = () => {
     setUser(baseUser);
 
     try {
-      // Check for profile entry and create it if missing to satisfy FK constraints
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('*')
@@ -181,7 +216,6 @@ const AppContent: React.FC = () => {
         .maybeSingle();
 
       if (!profile && !profileError) {
-        // Create the missing profile node
         await supabase.from('profiles').insert([{
           id: sbUser.id,
           username: baseUser.username,
@@ -203,7 +237,6 @@ const AppContent: React.FC = () => {
   const fetchGames = useCallback(async () => {
     setIsLoadingGames(true);
     try {
-      // Join with profiles table to get the email for audit trail
       const { data, error } = await supabase
         .from('games')
         .select('*, profiles:created_by(email)')
@@ -250,6 +283,15 @@ const AppContent: React.FC = () => {
     } catch (e: any) { showToast('error', 'Sync Failed', 'Could not update your remote collection.'); }
   };
 
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
+    // iOS-style delay for animation to finish
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    await supabase.auth.signOut();
+    setIsLoggingOut(false);
+    showToast('info', 'Secure Lockdown', 'Vault connection terminated safely.');
+  };
+
   const filteredGames = useMemo(() => {
     return games.filter(game => {
       const matchesSearch = game.title.toLowerCase().includes(searchQuery.toLowerCase());
@@ -273,15 +315,15 @@ const AppContent: React.FC = () => {
     if (user) fetchUserRequests(user.id);
   };
 
-  const isLibraryEmpty = viewMode === 'library' && libraryIds.length === 0 && userRequests.length === 0;
-
   return (
     <div className="min-h-screen flex flex-col bg-white">
+      {isLoggingOut && <LogoutOverlay />}
+      
       <Navbar 
         user={user} 
         reportCount={adminStats.reports}
         onAuthClick={() => setShowAuthModal(true)} 
-        onLogout={() => supabase.auth.signOut()}
+        onLogout={handleLogout}
         onAdminClick={() => setShowAdminPanel(true)}
         onLibraryClick={enterLibrary}
         onHomeClick={resetToFullStore}
